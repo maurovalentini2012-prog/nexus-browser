@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nexus</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src * data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="home.css">
+</head>
+<body>
+<main class="stage" id="stage">
+  <canvas id="c" aria-label="Logo NEXUS in 3D. Trascina per ruotarlo, clicca per generare un'onda."></canvas>
+  <p class="fallback" id="fallback" hidden>Questa scena 3D richiede WebGL, che non è disponibile.</p>
+
+  <!-- i link salvati che girano intorno a logo e scritta -->
+  <nav class="orbit" id="orbit" aria-label="Link salvati"></nav>
+
+  <div class="ui">
+    <div class="top">
+      <button class="space-pill" id="spacePill" type="button" title="Cambia progetto" hidden><span class="sp-dot"></span><span id="spaceName">Generale</span></button>
+      <div class="controls">
+        <div class="swatches" role="radiogroup" aria-label="Colore">
+          <button class="sw" type="button" role="radio" data-theme="cyan" aria-label="Ciano" title="Ciano"></button>
+          <button class="sw" type="button" role="radio" data-theme="violet" aria-label="Viola" title="Viola"></button>
+          <button class="sw" type="button" role="radio" data-theme="emerald" aria-label="Smeraldo" title="Smeraldo"></button>
+          <button class="sw" type="button" role="radio" data-theme="amber" aria-label="Ambra" title="Ambra"></button>
+        </div>
+        <button class="btn" type="button" id="spin" aria-pressed="false">Rotazione</button>
+        <button class="btn" type="button" id="clean" aria-pressed="false">Solo logo</button>
+        <button class="btn" type="button" id="manage" aria-pressed="false">Link</button>
+      </div>
+    </div>
+
+    <div class="center">
+      <div class="col" id="col">
+        <div class="logo-anchor" id="anchor" aria-hidden="true"></div>
+        <div class="brand">
+          <h1>NEXUS</h1>
+          <p class="tagline">Il tuo universo di progetti</p>
+        </div>
+        <form class="search" id="searchForm" autocomplete="off">
+          <select id="engine" aria-label="Motore di ricerca"></select>
+          <input id="q" type="text" spellcheck="false" placeholder="Cerca nel web o digita un indirizzo" aria-label="Cerca nel web">
+          <button type="submit" aria-label="Cerca">
+            <svg viewBox="0 0 16 16" width="16" height="16"><path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </form>
+        <p class="empty-hint" id="emptyHint" hidden>Questo progetto non ha ancora link. Aggiungili con il pulsante Link o con la stella nella barra.</p>
+      </div>
+    </div>
+
+    <p class="credit">Concept &amp; Design by <strong>Mauro Valentini</strong></p>
+  </div>
+
+  <!-- pannello gestione link -->
+  <aside class="panel" id="panel" hidden aria-label="Gestione link">
+    <header>
+      <h2>I tuoi link</h2>
+      <button class="btn small" type="button" id="closePanel" aria-label="Chiudi">Chiudi</button>
+    </header>
+    <ul id="linkList"></ul>
+    <form id="addForm" autocomplete="off">
+      <input id="addTitle" type="text" placeholder="Nome (es. Drive)" maxlength="40" aria-label="Nome del link">
+      <input id="addUrl" type="text" placeholder="Indirizzo (es. drive.google.com)" aria-label="Indirizzo del link" required>
+      <button class="btn" type="submit">Aggiungi</button>
+    </form>
+    <p class="note" id="note">Fino a 20 link. Si salvano da soli.</p>
+    <button class="btn small ghost" type="button" id="reset">Ripristina i predefiniti</button>
+  </aside>
+</main>
+
+<script src="../vendor/three.min.js"></script>
+<script src="../shared/themes.js"></script>
+<script src="home.js"></script>
+</body>
+</html>

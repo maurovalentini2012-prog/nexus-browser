@@ -1,0 +1,120 @@
+/* Interfaccia di Nexus: vetro scuro + neon che seguono il tema colore scelto (ciano, viola, smeraldo, ambra).
+   Le variabili sono registrate come colori così il cambio tema si anima in modo fluido. */
+@property --bg        { syntax: '<color>'; inherits: true; initial-value: #050b18; }
+@property --glow      { syntax: '<color>'; inherits: true; initial-value: #12315a; }
+@property --accent    { syntax: '<color>'; inherits: true; initial-value: #38bdf8; }
+@property --accent-hi { syntax: '<color>'; inherits: true; initial-value: #7df3ff; }
+@property --accent-3  { syntax: '<color>'; inherits: true; initial-value: #3b82f6; }
+@property --fg        { syntax: '<color>'; inherits: true; initial-value: #eaf8ff; }
+
+:root {
+  --bg: #050b18; --glow: #12315a; --accent: #38bdf8; --accent-hi: #7df3ff; --accent-3: #3b82f6; --fg: #eaf8ff;
+  --muted: color-mix(in srgb, var(--fg) 58%, transparent);
+  --line: color-mix(in srgb, var(--accent) 30%, transparent);
+  --field: color-mix(in srgb, var(--bg) 78%, black);
+  --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color-scheme: dark;
+  transition: --bg .7s, --glow .7s, --accent .7s, --accent-hi .7s, --accent-3 .7s, --fg .7s;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font: 13px/1 var(--font-ui); user-select: none; -webkit-user-select: none; }
+button, input, select { font: inherit; color: inherit; }
+
+/* ---------- schede ---------- */
+.strip {
+  height: 40px; display: flex; align-items: flex-end; gap: 4px; padding: 6px 150px 0 10px; -webkit-app-region: drag;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 16%, var(--bg)) 0%, color-mix(in srgb, var(--accent) 7%, var(--bg)) 100%);
+}
+body.mac .strip { padding-left: 84px; padding-right: 10px; }
+.tabs { display: flex; align-items: flex-end; gap: 3px; min-width: 0; flex: 0 1 auto; }
+.tab {
+  -webkit-app-region: no-drag; position: relative; display: flex; align-items: center; gap: 8px;
+  min-width: 64px; width: 200px; flex: 0 1 200px; height: 33px; padding: 0 8px 0 12px;
+  border-radius: 11px 11px 0 0; color: var(--muted); cursor: default;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid transparent; border-bottom: 0;
+  transition: background .2s, color .2s;
+}
+.tab:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--fg); }
+.tab.active {
+  color: var(--fg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 26%, var(--bg)) 0%, color-mix(in srgb, var(--accent) 9%, var(--bg)) 100%);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  box-shadow: 0 -8px 24px -12px var(--accent), inset 0 1px 0 color-mix(in srgb, var(--fg) 18%, transparent);
+}
+.tab.active::before { content: ''; position: absolute; left: 14px; right: 14px; top: -1px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--accent-hi), transparent); box-shadow: 0 0 10px var(--accent-hi); }
+.tab .fav { width: 16px; height: 16px; flex: none; display: grid; place-items: center; }
+.tab .fav img { width: 16px; height: 16px; border-radius: 3px; }
+.tab .title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 500; }
+.tab .x { flex: none; width: 20px; height: 20px; border: 0; border-radius: 50%; background: transparent; color: inherit; display: grid; place-items: center; cursor: pointer; opacity: .65; }
+.tab .x:hover { background: color-mix(in srgb, var(--fg) 16%, transparent); opacity: 1; }
+
+/* esagono che gira: indicatore di caricamento */
+.hexspin { width: 15px; height: 15px; color: var(--accent-hi); filter: drop-shadow(0 0 4px var(--accent)); animation: hexrot 1.1s linear infinite; }
+.hexspin path { stroke-dasharray: 11 8; }
+@keyframes hexrot { to { transform: rotate(360deg); } }
+
+.newtab { -webkit-app-region: no-drag; width: 28px; height: 28px; margin-bottom: 3px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+.newtab:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent-hi); }
+
+/* ---------- barra strumenti ---------- */
+.toolbar {
+  position: relative; height: 48px; display: flex; align-items: center; gap: 4px; padding: 0 12px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 9%, var(--bg)) 0%, color-mix(in srgb, var(--accent) 4%, var(--bg)) 100%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent) 35%, transparent);
+}
+/* linea al neon sotto la barra, con un respiro lento */
+.toolbar::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--accent) 18%, var(--accent-hi) 50%, var(--accent) 82%, transparent);
+  box-shadow: 0 0 10px 1px var(--accent), 0 0 26px 2px color-mix(in srgb, var(--accent) 45%, transparent);
+  animation: breathe 5s ease-in-out infinite;
+}
+@keyframes breathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+/* mentre la pagina carica, un lampo corre lungo la linea */
+.sweep { position: absolute; left: 0; bottom: 0; height: 3px; width: 24%; pointer-events: none; opacity: 0; z-index: 2;
+  background: linear-gradient(90deg, transparent, #fff, transparent); filter: drop-shadow(0 0 6px var(--accent-hi)); }
+body.loading .sweep { opacity: 1; animation: sweep 1.05s cubic-bezier(.4, 0, .2, 1) infinite; }
+@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(420%); } }
+
+.tb { width: 32px; height: 32px; border: 0; border-radius: 9px; background: transparent; color: var(--fg); display: grid; place-items: center; cursor: pointer; flex: none; transition: background .15s, color .15s; }
+.tb:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent-hi); }
+.tb:disabled { opacity: .3; cursor: default; }
+.tb:focus-visible, .star:focus-visible, .newtab:focus-visible, .tab .x:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 1px; }
+
+.omni { flex: 1; min-width: 120px; height: 34px; margin: 0 6px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--field); color: var(--muted); transition: border-color .2s, box-shadow .2s, color .2s; }
+.omni:focus-within { border-color: var(--accent-hi); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), 0 0 22px -4px var(--accent); color: var(--accent-hi); }
+.omni input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--fg); user-select: text; -webkit-user-select: text; }
+.omni input::placeholder { color: var(--muted); }
+.star { width: 26px; height: 26px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+.star:hover { color: var(--accent-hi); background: color-mix(in srgb, var(--accent) 22%, transparent); }
+
+.engine { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+.engine select { height: 30px; padding: 0 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--field); color: var(--fg); font-size: 12px; text-transform: none; letter-spacing: 0; cursor: pointer; }
+.engine select:focus-visible { outline: 2px solid var(--accent-hi); }
+
+/* pallini del tema */
+.themes { display: flex; gap: 6px; padding: 5px; margin-left: 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--field); }
+.themes button { width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%; cursor: pointer; outline-offset: 2px; transition: transform .15s; }
+.themes button:hover { transform: scale(1.18); }
+.themes button[aria-checked="true"] { outline: 2px solid var(--fg); }
+.themes button:focus-visible { outline: 2px solid var(--accent-hi); }
+.slot { display: flex; align-items: center; gap: 4px; }
+@media (max-width: 980px) { .engine-lbl { display: none; } }
+@media (max-width: 860px) { .engine { display: none; } }
+
+/* pulsante progetto (a sinistra delle schede) */
+.proj {
+  -webkit-app-region: no-drag; flex: none; display: flex; align-items: center; gap: 8px; height: 30px; margin: 0 8px 3px 0; padding: 0 11px 0 9px; max-width: 190px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent); border-radius: 999px; cursor: pointer; font-weight: 600; font-size: 12.5px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg)); transition: background .2s, border-color .2s, box-shadow .2s;
+}
+.proj:hover { background: color-mix(in srgb, var(--accent) 22%, var(--bg)); border-color: var(--accent-hi); box-shadow: 0 0 18px -6px var(--accent); }
+.proj:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+.proj-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.proj-dot { flex: none; width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 32% 28%, #fff, var(--accent-hi) 18%, var(--accent) 55%, var(--accent-3)); box-shadow: 0 0 10px var(--accent), inset -2px -3px 5px rgba(0,0,0,.45); }
+/* pulsante barra comandi */
+.kbtn { flex: none; height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--muted); font: 600 11.5px var(--font-ui); cursor: pointer; transition: color .15s, border-color .15s, box-shadow .15s; }
+.kbtn:hover { color: var(--accent-hi); border-color: var(--accent); box-shadow: 0 0 14px -6px var(--accent); }
+.kbtn:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 1px; }
+@media (max-width: 760px) { .kbtn { display: none; } .proj-name { max-width: 80px; } }

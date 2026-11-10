@@ -1,0 +1,96 @@
+{
+  "name": "nexus-browser",
+  "productName": "Nexus Browser",
+  "version": "0.3.0",
+  "description": "Nexus Browser — il tuo universo di progetti. Concept & Design by Mauro Valentini.",
+  "main": "main.js",
+  "author": "Mauro Valentini",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac dmg zip --x64 --arm64 --publish never",
+    "dist:win": "electron-builder --win nsis --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "^38.8.6",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "it.nexus.browser",
+    "productName": "Nexus Browser",
+    "files": [
+      "main.js",
+      "preload.js",
+      "updater.js",
+      "shell/**",
+      "shared/**",
+      "home/**",
+      "vendor/**",
+      "assets/**",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.png",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png",
+      "category": "Network"
+    },
+    "dmg": {
+      "title": "Installa Nexus Browser",
+      "iconSize": 112,
+      "window": {
+        "width": 560,
+        "height": 360
+      },
+      "contents": [
+        {
+          "x": 150,
+          "y": 180,
+          "type": "file"
+        },
+        {
+          "x": 410,
+          "y": 180,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "artifactName": "Nexus-Browser-${version}-${arch}.${ext}",
+    "afterPack": "build/afterPack.js",
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Nexus Browser",
+      "artifactName": "Nexus-Browser-Setup-${version}.${ext}"
+    }
+  },
+  "nexusUpdate": {
+    "repo": "maurovalentini2012-prog/nexus-browser"
+  }
+}
