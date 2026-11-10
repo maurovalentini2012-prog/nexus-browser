@@ -1,7 +1,7 @@
 {
   "name": "nexus-browser",
   "productName": "Nexus Browser",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Nexus Browser — il tuo universo di progetti. Concept & Design by Mauro Valentini.",
   "main": "main.js",
   "author": "Mauro Valentini",

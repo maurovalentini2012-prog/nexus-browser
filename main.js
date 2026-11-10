@@ -295,6 +295,8 @@ function layout() {
   t.view.setBounds({ x: 0, y: top, width: w, height: Math.max(0, h - top) });
 }
 function activeTab() { return tabs.get(activeId); }
+process.on('uncaughtException', (err) => { try { console.error('Errore non gestito:', err && err.stack || err); } catch (e) { /* niente */ } }); // un errore interno non deve mostrare finestre di errore all'utente
+const wcOf = (t) => (t && t.view && t.view.webContents && !t.view.webContents.isDestroyed() ? t.view.webContents : null);
 
 function attach(t) { if (!t.attached) { win.contentView.addChildView(t.view); t.attached = true; } }
 function detach(t) { if (t.attached) { win.contentView.removeChildView(t.view); t.attached = false; } }
@@ -356,6 +358,7 @@ function createTab(url, makeActive = true, spaceId, opts = {}) {
   const tab = { id, view, space: spaceId || data.activeSpace, title: '', favicon: null, thumb: null, attached: false, private: !!opts.private, pinned: false, blocked: 0 };
   tabs.set(id, tab);
   const wc = view.webContents;
+  wc.on('destroyed', () => { if (tabs.has(id)) closeTab(id); }); // la pagina si è chiusa da sola (es. finestra di accesso Google)
 
   wc.setWindowOpenHandler(({ url: u }) => { createTab(u, true, tab.space, { private: tab.private }); return { action: 'deny' }; });
   wc.on('page-title-updated', (_e, title) => { tab.title = title; if (!tab.private) recordTitle(wc.getURL(), fileTitle(wc.getURL(), title)); push(); });
@@ -378,11 +381,11 @@ function closeTab(id) {
   const list = spaceTabs(sp).map((x) => x.id);
   const idx = list.indexOf(id);
   if (id === activeId && findOpen) closeFind(false);
-  const curUrl = t.view.webContents.isDestroyed() ? '' : t.view.webContents.getURL();
+  const curUrl = wcOf(t) ? wcOf(t).getURL() : '';
   if (!t.private && curUrl && !isHome(curUrl)) { closedStack.push({ url: curUrl, space: t.space, pinned: !!t.pinned }); if (closedStack.length > 20) closedStack.shift(); }
   detach(t);
   tabs.delete(id);
-  try { t.view.webContents.close(); } catch (e) { /* già chiusa */ }
+  try { const w = wcOf(t); if (w) w.close(); } catch (e) { /* già chiusa */ }
   if (!spaceTabs(sp).length) {
     if (sp === data.activeSpace) { endSwitcher(); activeId = null; createTab(HOME_URL, true); }
     return;
@@ -1580,7 +1583,7 @@ app.whenReady().then(() => {
   setTimeout(auto, 8000);
   setInterval(auto, 6 * 60 * 60 * 1000);
   // miniatura sempre fresca della scheda attiva (serve al cambio scheda 3D)
-  setInterval(() => { const t = activeTab(); if (t && win && win.isVisible() && !switcherOpen && !t.view.webContents.isLoading()) snap(t); }, 6000);
+  setInterval(() => { try { const t = activeTab(); const w = wcOf(t); if (w && win && win.isVisible() && !switcherOpen && !w.isLoading()) snap(t); } catch (e) { /* scheda in chiusura */ } }, 6000);
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on('before-quit', () => { updateSession(); sessionFrozen = true; clearTimeout(saveTimer); saveData(); });
