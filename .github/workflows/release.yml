@@ -16,7 +16,9 @@ jobs:
       - name: Versione dal tag
         shell: bash
         run: npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
-      - run: npx electron-builder --mac dmg zip --x64 --arm64 --publish never
+      # un'architettura alla volta: i due .dmg hanno lo stesso nome di volume e in parallelo si bloccano a vicenda
+      - run: npx electron-builder --mac dmg zip --x64 --publish never
+      - run: npx electron-builder --mac dmg zip --arm64 --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: mac
