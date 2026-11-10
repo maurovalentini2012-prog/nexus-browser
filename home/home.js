@@ -25,6 +25,7 @@
     brave: { name: 'Brave', url: 'https://search.brave.com/search?q=' }
   };
   var MAX_LINKS = 20;
+  var cfg = { previews: true, spin: false, orbit: 1 }, saved = { accent: [], bg: [] };
   var links = DEFAULT_LINKS.slice(), engines = FALLBACK_ENGINES, engineId = 'google', spaceName = '';
 
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -36,7 +37,7 @@
   }
   function loadData() {
     if (api) {
-      return api.getData().then(function (d) { links = d.links; engines = d.engines || engines; engineId = d.engine || engineId; themeFromMain = d.theme || null; spaceName = d.spaceName || ''; });
+      return api.getData().then(function (d) { links = d.links; engines = d.engines || engines; engineId = d.engine || engineId; themeFromMain = d.theme || null; customFromMain = d.custom || null; spaceName = d.spaceName || ''; if (d.settings) cfg = d.settings; if (d.savedColors) saved = d.savedColors; });
     }
     try { var s = JSON.parse(lsGet('nexus-links')); if (Array.isArray(s)) links = s; } catch (e) {}
     engineId = lsGet('nexus-engine') || engineId;
@@ -105,8 +106,38 @@
     var n = chips.length;
     lay.scale = n > 12 ? Math.max(0.68, 12 / n) : 1;
   }
-  orbit.addEventListener('pointerover', function (e) { if (e.target.closest && e.target.closest('.chip')) hoverOrbit = true; });
-  orbit.addEventListener('pointerout', function (e) { if (e.target.closest && e.target.closest('.chip')) hoverOrbit = false; });
+  var pv = document.getElementById('pv'), pvImg = document.getElementById('pvImg'), pvT = document.getElementById('pvT'), pvH = document.getElementById('pvH');
+  var pvChip = null, pvTimer = 0, pvToken = 0;
+  function placePreview() {
+    if (!pvChip || pv.hidden) return;
+    var r = pvChip.el.getBoundingClientRect(), w = pv.offsetWidth || 280, h = pv.offsetHeight || 200;
+    var x = Math.max(10, Math.min(window.innerWidth - w - 10, r.left + r.width / 2 - w / 2));
+    var y = r.bottom + 10;
+    if (y + h > window.innerHeight - 10) y = Math.max(10, r.top - h - 10);
+    pv.style.left = x.toFixed(0) + 'px'; pv.style.top = y.toFixed(0) + 'px';
+  }
+  function hidePreview() { clearTimeout(pvTimer); pvToken++; pvChip = null; pv.classList.remove('in'); setTimeout(function () { if (!pvChip) pv.hidden = true; }, 200); }
+  function showPreview(c, l) {
+    if (!api || !api.getPreview || !cfg.previews || !panel.hidden || !cpanel.hidden) return;
+    var tok = ++pvToken; pvChip = c;
+    pvT.textContent = l.title; pvH.textContent = hostOf(l.url);
+    pvImg.className = 'pv-img load'; pvImg.style.backgroundImage = '';
+    pv.hidden = false; placePreview(); requestAnimationFrame(function () { if (tok === pvToken) pv.classList.add('in'); });
+    api.getPreview(l.url).then(function (img) {
+      if (tok !== pvToken) return;
+      if (img) { pvImg.className = 'pv-img'; pvImg.style.backgroundImage = 'url(' + img + ')'; }
+      else pvImg.className = 'pv-img none';
+    }, function () { if (tok === pvToken) pvImg.className = 'pv-img none'; });
+  }
+  function chipIndex(e) { var a = e.target.closest && e.target.closest('.chip'); if (!a) return -1; for (var i = 0; i < chips.length; i++) if (chips[i].el === a) return i; return -1; }
+  orbit.addEventListener('pointerover', function (e) {
+    var i = chipIndex(e); if (i < 0) return;
+    hoverOrbit = true; clearTimeout(pvTimer);
+    var c = chips[i], l = links[i]; if (!l) return;
+    pvTimer = setTimeout(function () { showPreview(c, l); }, 350);
+  });
+  orbit.addEventListener('pointerout', function (e) { if (chipIndex(e) < 0) return; hoverOrbit = false; hidePreview(); });
+  window.addEventListener('blur', hidePreview);
 
   var ROLL = -0.07; // leggera inclinazione dell'anello
   function placeChips(dt) {
@@ -114,7 +145,7 @@
     if (!n) return;
     var target = (hoverOrbit || !panel.hidden) ? 0 : 1;
     speedF += (target - speedF) * Math.min(1, dt * 6);
-    phase += dt * 0.16 * speedF * motion;
+    phase += dt * 0.16 * speedF * motion * (cfg.orbit || 1);
     var cr = Math.cos(ROLL), sr = Math.sin(ROLL);
     for (var i = 0; i < n; i++) {
       var a = phase + (i / n) * Math.PI * 2;
@@ -188,6 +219,21 @@
   var TAU = Math.PI * 2;
   var scene, camera, logo, FOV_T, THEMES, KEYS, cur = {}, tgt = {}, themeName = 'cyan';
   var logoTargetY = 0, clean = false, spin = false, themeFromMain = null;
+  var custom = { accent: null, bg: null };   // colori scelti a mano (sopra il tema)
+  var customFromMain = null;
+
+  /* colori effettivi = tema + eventuali scelte personali di scritta/ellissi (accent) e sfondo (bg) */
+  function hex2rgb(h) { return [1, 3, 5].map(function (i) { return parseInt(h.slice(i, i + 2), 16); }); }
+  function mixHex(a, b, k) { var x = hex2rgb(a), y = hex2rgb(b); return '#' + x.map(function (v, i) { return Math.round(v * (1 - k) + y[i] * k).toString(16).padStart(2, '0'); }).join(''); }
+  function lumOf(h) { var c = hex2rgb(h).map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; }
+  function effective(name) {
+    var b = window.NEXUS_THEMES[name], o = { c1: b.c1, c2: b.c2, c3: b.c3, bg: b.bg, glow: b.glow, fg: b.fg };
+    var light = false;
+    if (custom.bg) { o.bg = custom.bg; light = lumOf(custom.bg) > 0.4; o.glow = mixHex(custom.bg, light ? '#000000' : '#ffffff', 0.12); if (light) o.fg = '#0b1626'; }
+    var acc = custom.accent || (light ? b.c2 : null);
+    if (acc) { o.c2 = acc; o.c1 = light ? mixHex(acc, '#000000', 0.22) : mixHex(acc, '#ffffff', 0.45); o.c3 = mixHex(acc, '#000000', 0.35); }
+    return o;
+  }
   var colEl = document.getElementById('col'), anchorEl = document.getElementById('anchor');
 
   /* ---------- misura del layout: posiziona logo 3D e anello dei link ---------- */
@@ -224,7 +270,7 @@
     KEYS = ['c1', 'c2', 'c3', 'bg', 'glow', 'fg'];
     KEYS.forEach(function (k) { cur[k] = new THREE.Color(); tgt[k] = new THREE.Color(); });
     var saved = lsGet('nexus3d-theme'); if (saved && THEMES[saved]) themeName = saved;
-    var setTarget = function (name) { KEYS.forEach(function (k) { tgt[k].set(THEMES[name][k]); }); };
+    var setTarget = function (name) { var e = effective(name); KEYS.forEach(function (k) { tgt[k].set(e[k]); }); };
     setTarget(themeName);
     KEYS.forEach(function (k) { cur[k].copy(tgt[k]); });
 
@@ -453,6 +499,12 @@
       if (instant) { KEYS.forEach(function (k) { cur[k].copy(tgt[k]); }); applyColors(); }
       markTheme();
     };
+    // colori personalizzati (pannello "Colori")
+    window.__nexusCustom = function (c, instant) {
+      custom = { accent: c && c.accent || null, bg: c && c.bg || null };
+      setTarget(themeName);
+      if (instant) { KEYS.forEach(function (k) { cur[k].copy(tgt[k]); }); applyColors(); }
+    };
     var spinBtn = document.getElementById('spin'), cleanBtn = document.getElementById('clean');
     spinBtn.addEventListener('click', function () { spin = !spin; spinBtn.setAttribute('aria-pressed', String(spin)); });
     cleanBtn.addEventListener('click', function () { clean = !clean; stage.classList.toggle('clean', clean); cleanBtn.setAttribute('aria-pressed', String(clean)); });
@@ -524,14 +576,14 @@
       pGeo.attributes.position.needsUpdate = true;
       points.position.set(ptr.sx * -0.35, ptr.sy * -0.2, 0);
 
-      placeChips(dt);
+      placeChips(dt); placePreview();
       renderer.render(scene, camera);
     };
     window.__nexusStart = function () { logo.position.y = logoTargetY; requestAnimationFrame(frame); };
   } else {
     // senza WebGL i link ruotano comunque
     var last2 = performance.now();
-    var frame2 = function (now) { requestAnimationFrame(frame2); var dt = Math.min(0.05, (now - last2) / 1000); last2 = now; placeChips(dt); };
+    var frame2 = function (now) { requestAnimationFrame(frame2); var dt = Math.min(0.05, (now - last2) / 1000); last2 = now; placeChips(dt); placePreview(); };
     window.__nexusStart = function () { requestAnimationFrame(frame2); };
   }
 
@@ -540,15 +592,85 @@
   if (window.ResizeObserver) new ResizeObserver(function () { measure(); }).observe(colEl);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { resize(); });
 
+  /* pannello colori */
+  var cpanel = document.getElementById('colorPanel'), colorsBtn = document.getElementById('colors');
+  var cAccent = document.getElementById('cAccent'), cBg = document.getElementById('cBg');
+  var PRE_ACCENT = ['#7df3ff', '#f0abfc', '#6ee7b7', '#fde68a', '#ff8fa3', '#ffffff'];
+  var PRE_BG = ['#050b18', '#120a1f', '#04140f', '#130c04', '#0a0a0a', '#eef2f7'];
+  function toggleColors(open) { cpanel.hidden = !open; colorsBtn.setAttribute('aria-pressed', String(open)); if (open && !panel.hidden) togglePanel(false); }
+  function syncColorUI() {
+    var e = window.__nexusTheme ? effective(themeName) : null;
+    if (!e) return;
+    cAccent.value = custom.accent || e.c2; cBg.value = custom.bg || e.bg;
+    Array.prototype.forEach.call(document.querySelectorAll('#pAccent button'), function (b) { b.setAttribute('aria-pressed', String(b.dataset.c === custom.accent)); });
+    Array.prototype.forEach.call(document.querySelectorAll('#pBg button, #sBg button'), function (b) { b.setAttribute('aria-pressed', String(b.dataset.c === custom.bg)); });
+    Array.prototype.forEach.call(document.querySelectorAll('#sAccent button:not(.rm)'), function (b) { b.setAttribute('aria-pressed', String(b.dataset.c === custom.accent)); });
+  }
+  function setColors(next, save) {
+    window.__nexusCustom(next, false); syncColorUI();
+    if (save && api && api.saveCustom) api.saveCustom(custom);
+  }
+  function buildPresets(id, list, key) {
+    var host = document.getElementById(id);
+    list.forEach(function (c) {
+      var b = document.createElement('button'); b.type = 'button'; b.dataset.c = c; b.style.background = c; b.setAttribute('aria-pressed', 'false');
+      b.title = c; b.setAttribute('aria-label', 'Colore ' + c);
+      b.addEventListener('click', function () { var n = { accent: custom.accent, bg: custom.bg }; n[key] = c; setColors(n, true); });
+      host.appendChild(b);
+    });
+  }
+  buildPresets('pAccent', PRE_ACCENT, 'accent'); buildPresets('pBg', PRE_BG, 'bg');
+  function renderSaved() {
+    [['sAccent', 'accent'], ['sBg', 'bg']].forEach(function (p) {
+      var host = document.getElementById(p[0]), key = p[1], list = saved[key] || [];
+      host.textContent = '';
+      if (!list.length) { var e = document.createElement('span'); e.className = 'empty'; e.textContent = 'Nessuno ancora'; e.style.cssText = 'font-size:11.5px;color:var(--muted)'; host.appendChild(e); return; }
+      list.forEach(function (c) {
+        var w = document.createElement('span'); w.className = 'sv';
+        var b = document.createElement('button'); b.type = 'button'; b.dataset.c = c; b.style.background = c; b.title = c; b.setAttribute('aria-label', 'Usa ' + c);
+        b.setAttribute('aria-pressed', String(custom[key] === c));
+        b.addEventListener('click', function () { var n = { accent: custom.accent, bg: custom.bg }; n[key] = c; setColors(n, true); });
+        var x = document.createElement('button'); x.type = 'button'; x.className = 'rm'; x.textContent = '×'; x.setAttribute('aria-label', 'Elimina ' + c);
+        x.addEventListener('click', function (ev) { ev.stopPropagation(); saved[key] = saved[key].filter(function (v) { return v !== c; }); persistSaved(); });
+        w.append(b, x); host.appendChild(w);
+      });
+    });
+  }
+  function persistSaved() { renderSaved(); if (api && api.saveSwatches) api.saveSwatches(saved); }
+  function addSaved(key, input) {
+    var c = String(input.value).toLowerCase();
+    if (!/^#[0-9a-f]{6}$/.test(c)) return;
+    saved[key] = [c].concat((saved[key] || []).filter(function (v) { return v !== c; })).slice(0, 14);
+    persistSaved();
+  }
+  document.getElementById('saveAccent').addEventListener('click', function () { addSaved('accent', cAccent); });
+  document.getElementById('saveBg').addEventListener('click', function () { addSaved('bg', cBg); });
+  cAccent.addEventListener('input', function () { setColors({ accent: cAccent.value, bg: custom.bg }, false); });
+  cAccent.addEventListener('change', function () { setColors({ accent: cAccent.value, bg: custom.bg }, true); });
+  cBg.addEventListener('input', function () { setColors({ accent: custom.accent, bg: cBg.value }, false); });
+  cBg.addEventListener('change', function () { setColors({ accent: custom.accent, bg: cBg.value }, true); });
+  document.getElementById('cReset').addEventListener('click', function () { setColors({ accent: null, bg: null }, true); });
+  colorsBtn.addEventListener('click', function () { toggleColors(cpanel.hidden); });
+  document.getElementById('closeColors').addEventListener('click', function () { toggleColors(false); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !cpanel.hidden) toggleColors(false); });
+  manageBtn.addEventListener('click', function () { if (!panel.hidden) toggleColors(false); }); // aprire i link chiude i colori
+
   var pill = document.getElementById('spacePill');
   if (pill && api) pill.addEventListener('click', function () { api.openSpaces(); });
   loadData().then(function () {
     if (pill && api && spaceName) { document.getElementById('spaceName').textContent = spaceName; pill.hidden = false; }
     if (window.__nexusTheme) {
       var t0 = themeFromMain || lsGet('nexus3d-theme');
-      if (t0) window.__nexusTheme(t0, true);
+      window.__nexusCustom(customFromMain, false);
+      if (t0) window.__nexusTheme(t0, true); else window.__nexusCustom(customFromMain, true);
       if (api && api.onTheme) api.onTheme(function (n) { window.__nexusTheme(n, false); });
+      if (api && api.onCustom) api.onCustom(function (c) { window.__nexusCustom(c, false); syncColorUI(); });
+      syncColorUI();
     }
+    renderSaved(); syncColorUI();
+    spin = !!cfg.spin; var sb = document.getElementById('spin'); if (sb) sb.setAttribute('aria-pressed', String(spin));
+    if (api && api.onSaved) api.onSaved(function (c) { saved = c || saved; renderSaved(); syncColorUI(); });
+    if (api && api.onSettings) api.onSettings(function (s) { var was = cfg.spin; cfg = s; if (s.spin !== was) { spin = !!s.spin; if (sb) sb.setAttribute('aria-pressed', String(spin)); } if (!s.previews) hidePreview(); });
     buildEngineSelect();
     buildChips();
     resize();

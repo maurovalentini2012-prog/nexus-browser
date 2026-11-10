@@ -21,6 +21,21 @@ if (isNexusPage) {
     forward: () => ipcRenderer.send('shell:forward'),
     reload: () => ipcRenderer.send('shell:reload'),
     home: () => ipcRenderer.send('shell:home'),
+    fullscreen: () => ipcRenderer.send('shell:fullscreen'),
+    toggleAdblock: () => ipcRenderer.send('shell:adblock'),
+    privateTab: () => ipcRenderer.send('shell:privateTab'),
+    tabMenu: (id) => ipcRenderer.send('tab:menu', id),
+
+    // trova nella pagina
+    findOpen: () => ipcRenderer.send('find:open'),
+    findClose: () => ipcRenderer.send('find:close'),
+    findQuery: (text, forward, next) => ipcRenderer.send('find:query', text, forward, next),
+    onFind: (ev, cb) => ipcRenderer.on('find:' + ev, (_e, p) => cb(p)),
+
+    // download
+    getDownloads: () => ipcRenderer.invoke('dl:list'),
+    onDownloads: (cb) => ipcRenderer.on('dl:update', (_e, l) => cb(l)),
+    dlAction: (id, action) => ipcRenderer.send('dl:action', id, action),
     addLink: () => ipcRenderer.send('shell:addLink'),
     setEngine: (id) => ipcRenderer.send('shell:setEngine', id),
 
@@ -48,6 +63,19 @@ if (isNexusPage) {
     getData: () => ipcRenderer.invoke('data:get'),
     saveLinks: (links) => ipcRenderer.send('data:saveLinks', links),
     homeSetEngine: (id) => ipcRenderer.send('data:setEngine', id),
-    homeGo: (text) => ipcRenderer.send('data:go', text)
+    homeGo: (text) => ipcRenderer.send('data:go', text),
+    saveCustom: (c) => ipcRenderer.send('data:saveCustom', c),
+    saveSwatches: (c) => ipcRenderer.send('data:saveSwatches', c),
+    onSaved: (cb) => ipcRenderer.on('saved', (_e, c) => cb(c)),
+    getPreview: (url) => ipcRenderer.invoke('preview:get', url),
+    onSettings: (cb) => ipcRenderer.on('settings', (_e, s) => cb(s)),
+
+    // impostazioni (finestra nel guscio)
+    setSetting: (key, value) => ipcRenderer.send('settings:set', key, value),
+    onSettingsUpdate: (cb) => ipcRenderer.on('settings:update', (_e, s) => cb(s)),
+    pickDownloadDir: () => ipcRenderer.send('settings:pickDir'),
+    clearHistory: () => ipcRenderer.send('settings:clearHistory'),
+    checkUpdate: () => ipcRenderer.send('settings:checkUpdate'),
+    onCustom: (cb) => ipcRenderer.on('custom', (_e, c) => cb(c))
   });
 }

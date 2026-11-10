@@ -14,6 +14,7 @@ if errorlevel 1 (
 echo  [1/2] Installo i componenti ^(la prima volta richiede qualche minuto^)...
 call npm install
 if errorlevel 1 goto errore
+if not exist node_modules\electron\path.txt call node node_modules\electron\install.js
 echo.
 echo  [2/2] Costruisco l'installer...
 call npm run dist:win

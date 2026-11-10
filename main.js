@@ -5,16 +5,19 @@
    - "overlay": pannelli del guscio che compaiono al posto della pagina (cambio scheda 3D, pianeti dei progetti, barra comandi)
    Per aggiungere nuove funzioni: nuovo pulsante in shell/index.html + nuovo ipcMain.handle qui sotto. */
 
-const { app, BrowserWindow, WebContentsView, ipcMain, Menu, session } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, Menu, session, dialog, shell: electronShell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 const updater = require('./updater');
 const THEMES = require('./shared/themes.js');
+const blocklist = require('./blocklist');
 
 const isMac = process.platform === 'darwin';
 const HOME_URL = pathToFileURL(path.join(__dirname, 'home', 'home.html')).href;
 const CHROME_H = 88; // altezza del guscio: 40 (progetti e schede) + 48 (barra strumenti)
+const FIND_H = 44;   // barra "trova nella pagina" quando è aperta
+const PRIVATE_PARTITION = 'nexus-private'; // sessione in memoria: schede private, niente cookie né cronologia salvati
 
 /* ---------- motori di ricerca e dati salvati ---------- */
 const ENGINES = {
@@ -39,8 +42,10 @@ const DEFAULT_LINKS = [
 
 const MAX_SPACES = 12;
 let data = {
-  engine: 'google', channel: 'stable', fx: 'full',
-  spaces: [{ id: 'generale', name: 'Generale', theme: 'cyan', links: DEFAULT_LINKS.slice() }],
+  engine: 'google', channel: 'stable', fx: 'full', adblock: true,
+  settings: { previews: true, spin: false, orbit: 1, downloadDir: null },
+  savedColors: { accent: [], bg: [] },
+  spaces: [{ id: 'generale', name: 'Generale', theme: 'cyan', links: DEFAULT_LINKS.slice(), custom: { accent: null, bg: null } }],
   activeSpace: 'generale',
   history: []
 };
@@ -57,13 +62,34 @@ function cleanLinks(list) {
   });
   return out;
 }
+/* colori personalizzati della home: "accent" = scritta, logo ed ellissi; "bg" = sfondo (indipendenti dal tema) */
+function cleanCustom(c) {
+  const ok = (v) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : null);
+  return { accent: ok(c && c.accent), bg: ok(c && c.bg) };
+}
+function cleanSettings(s) {
+  s = s || {};
+  const orbit = +s.orbit;
+  return {
+    previews: typeof s.previews === 'boolean' ? s.previews : true,
+    spin: typeof s.spin === 'boolean' ? s.spin : false,
+    orbit: isFinite(orbit) && orbit > 0 ? Math.max(0.3, Math.min(2, orbit)) : 1,
+    downloadDir: typeof s.downloadDir === 'string' && s.downloadDir ? s.downloadDir : null
+  };
+}
+function cleanSaved(c) {
+  const ok = (v) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : null);
+  const list = (a) => [...new Set((Array.isArray(a) ? a : []).map(ok).filter(Boolean))].slice(0, 14);
+  return { accent: list(c && c.accent), bg: list(c && c.bg) };
+}
 function cleanSpace(s) {
   if (!s || typeof s.id !== 'string' || !s.id) return null;
   return {
     id: s.id.slice(0, 40),
     name: String(s.name || 'Progetto').trim().slice(0, 30) || 'Progetto',
     theme: THEMES[s.theme] ? s.theme : 'cyan',
-    links: cleanLinks(s.links)
+    links: cleanLinks(s.links),
+    custom: cleanCustom(s.custom)
   };
 }
 function loadData() {
@@ -71,11 +97,14 @@ function loadData() {
     const d = JSON.parse(fs.readFileSync(dataFile(), 'utf8'));
     if (d && ENGINES[d.engine]) data.engine = d.engine;
     if (d && (d.fx === 'full' || d.fx === 'light')) data.fx = d.fx;
+    if (d && typeof d.adblock === 'boolean') data.adblock = d.adblock;
+    data.settings = cleanSettings(d && d.settings);
+    data.savedColors = cleanSaved(d && d.savedColors);
     if (d && (d.channel === 'stable' || d.channel === 'beta')) data.channel = d.channel;
     let spaces = Array.isArray(d.spaces) ? d.spaces.map(cleanSpace).filter(Boolean).slice(0, MAX_SPACES) : [];
     if (!spaces.length) {
       // migrazione dalla versione precedente: i vecchi link e il vecchio tema diventano il progetto "Generale"
-      spaces = [{ id: 'generale', name: 'Generale', theme: THEMES[d.theme] ? d.theme : 'cyan', links: Array.isArray(d.links) ? cleanLinks(d.links) : DEFAULT_LINKS.slice() }];
+      spaces = [{ id: 'generale', name: 'Generale', theme: THEMES[d.theme] ? d.theme : 'cyan', links: Array.isArray(d.links) ? cleanLinks(d.links) : DEFAULT_LINKS.slice(), custom: { accent: null, bg: null } }];
     }
     data.spaces = spaces;
     data.activeSpace = spaces.some((s) => s.id === d.activeSpace) ? d.activeSpace : spaces[0].id;
@@ -87,7 +116,7 @@ function loadData() {
 function saveData() {
   try {
     fs.writeFileSync(dataFile(), JSON.stringify({
-      engine: data.engine, channel: data.channel, fx: data.fx, spaces: data.spaces, activeSpace: data.activeSpace, history: data.history
+      engine: data.engine, channel: data.channel, fx: data.fx, adblock: data.adblock, settings: data.settings, savedColors: data.savedColors, spaces: data.spaces, activeSpace: data.activeSpace, history: data.history
     }, null, 2));
   } catch (e) { console.error('salvataggio dati', e); }
 }
@@ -130,9 +159,14 @@ let activeId = null;             // scheda attiva del progetto attivo
 let nextId = 1;
 const lastActive = new Map();    // progetto -> ultima scheda attiva
 let switcherOpen = false;        // true quando un overlay è aperto (la pagina è staccata)
+let findOpen = false;            // barra "trova nella pagina" visibile
+const closedStack = [];          // schede chiuse di recente (per "riapri scheda chiusa")
+const downloads = [];            // download recenti (il più nuovo per primo)
+const dlItems = new Map();       // id -> DownloadItem in corso
+let nextDl = 1;
 let overlayKind = null;          // 'switcher' | 'spaces' | 'palette'
 
-const spaceTabs = (sp) => [...tabs.values()].filter((t) => t.space === (sp || data.activeSpace));
+const spaceTabs = (sp) => [...tabs.values()].filter((t) => t.space === (sp || data.activeSpace)).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
 const spacesList = () => data.spaces.map((s) => ({ id: s.id, name: s.name, theme: s.theme, count: spaceTabs(s.id).length, links: s.links.length }));
 
 function tabInfo(t) {
@@ -147,16 +181,23 @@ function tabInfo(t) {
     title: home ? 'Nexus' : (t.title || wc.getTitle() || url || 'Nuova scheda'),
     favicon: home ? null : t.favicon,
     loading: wc.isLoading(),
+    pinned: !!t.pinned,
+    private: !!t.private,
+    blocked: t.blocked || 0,
     canBack: wc.navigationHistory.canGoBack(),
     canFwd: wc.navigationHistory.canGoForward()
   };
 }
 function getState() {
   return {
-    active: activeId, engine: data.engine, engines: ENGINES, theme: curTheme(), fx: data.fx,
+    active: activeId, engine: data.engine, engines: ENGINES, theme: curTheme(), fx: data.fx, adblock: data.adblock, fullscreen: !!(win && !win.isDestroyed() && win.isFullScreen()),
     activeSpace: data.activeSpace, spaces: spacesList(),
     tabs: spaceTabs().map(tabInfo)
   };
+}
+function toggleFullscreen() {
+  if (!win || win.isDestroyed()) return;
+  win.setFullScreen(!win.isFullScreen());
 }
 function push() {
   if (win && !win.isDestroyed()) win.webContents.send('shell:state', getState());
@@ -166,7 +207,8 @@ function layout() {
   const t = tabs.get(activeId);
   if (!t) return;
   const [w, h] = win.getContentSize();
-  t.view.setBounds({ x: 0, y: CHROME_H, width: w, height: Math.max(0, h - CHROME_H) });
+  const top = CHROME_H + (findOpen ? FIND_H : 0);
+  t.view.setBounds({ x: 0, y: top, width: w, height: Math.max(0, h - top) });
 }
 function activeTab() { return tabs.get(activeId); }
 
@@ -191,6 +233,7 @@ function doActivate(id) {
   const next = tabs.get(id);
   if (!next) return;
   const prev = tabs.get(activeId);
+  if (prev && prev !== next && findOpen) closeFind(false);
   if (prev && prev !== next) detach(prev);
   activeId = id;
   lastActive.set(next.space, id);
@@ -220,20 +263,21 @@ async function snapFull(t) {
   } catch (e) { return null; }
 }
 
-function createTab(url, makeActive = true, spaceId) {
+function createTab(url, makeActive = true, spaceId, opts = {}) {
   const id = nextId++;
   const view = new WebContentsView({
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
+    webPreferences: Object.assign({ preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }, opts.private ? { partition: PRIVATE_PARTITION } : {})
   });
   view.setBackgroundColor('#050b18');
-  const tab = { id, view, space: spaceId || data.activeSpace, title: '', favicon: null, thumb: null, attached: false };
+  const tab = { id, view, space: spaceId || data.activeSpace, title: '', favicon: null, thumb: null, attached: false, private: !!opts.private, pinned: false, blocked: 0 };
   tabs.set(id, tab);
   const wc = view.webContents;
 
-  wc.setWindowOpenHandler(({ url: u }) => { createTab(u, true, tab.space); return { action: 'deny' }; });
-  wc.on('page-title-updated', (_e, title) => { tab.title = title; recordTitle(wc.getURL(), title); push(); });
+  wc.setWindowOpenHandler(({ url: u }) => { createTab(u, true, tab.space, { private: tab.private }); return { action: 'deny' }; });
+  wc.on('page-title-updated', (_e, title) => { tab.title = title; if (!tab.private) recordTitle(wc.getURL(), title); push(); });
   wc.on('page-favicon-updated', (_e, icons) => { tab.favicon = icons && icons[0] || null; push(); });
-  wc.on('did-navigate', (_e, u) => { tab.favicon = null; recordVisit(u); });
+  wc.on('did-navigate', (_e, u) => { tab.favicon = null; tab.blocked = 0; if (!tab.private) recordVisit(u); });
+  wc.on('found-in-page', (_e, r) => { if (tab.id === activeId && win && !win.isDestroyed()) win.webContents.send('find:result', { active: r.activeMatchOrdinal, total: r.matches }); });
   wc.on('did-stop-loading', () => { setTimeout(() => { if (tab.attached && !switcherOpen) snap(tab); }, 700); });
   ['did-navigate', 'did-navigate-in-page', 'did-start-loading', 'did-stop-loading', 'did-fail-load'].forEach((ev) => wc.on(ev, push));
 
@@ -249,6 +293,9 @@ function closeTab(id) {
   const sp = t.space;
   const list = spaceTabs(sp).map((x) => x.id);
   const idx = list.indexOf(id);
+  if (id === activeId && findOpen) closeFind(false);
+  const curUrl = t.view.webContents.isDestroyed() ? '' : t.view.webContents.getURL();
+  if (!t.private && curUrl && !isHome(curUrl)) { closedStack.push({ url: curUrl, space: t.space, pinned: !!t.pinned }); if (closedStack.length > 20) closedStack.shift(); }
   detach(t);
   tabs.delete(id);
   try { t.view.webContents.close(); } catch (e) { /* già chiusa */ }
@@ -283,9 +330,15 @@ function hexMix(a, b, k) {
   const x = p(a), y = p(b);
   return '#' + x.map((v, i) => Math.round(v * (1 - k) + y[i] * k).toString(16).padStart(2, '0')).join('');
 }
+function sendCustom(spaceId) {
+  const c = getSpace(spaceId).custom || { accent: null, bg: null };
+  for (const t of tabs.values()) if (t.space === spaceId && !t.view.webContents.isDestroyed() && isHome(t.view.webContents.getURL())) t.view.webContents.send('custom', c);
+}
 function setTheme(name) {
   if (!THEMES[name]) return;
   getSpace().theme = name;
+  getSpace().custom = { accent: null, bg: null }; // scegliere un tema azzera i colori personalizzati
+  sendCustom(data.activeSpace);
   saveData();
   broadcastTheme();
   push();
@@ -313,7 +366,7 @@ function createSpace(name) {
   const used = data.spaces.map((s) => s.theme);
   const keys = Object.keys(THEMES);
   const theme = keys.find((k) => !used.includes(k)) || keys[data.spaces.length % keys.length];
-  const sp = { id: newSpaceId(), name: String(name || '').trim().slice(0, 30) || 'Progetto ' + (data.spaces.length + 1), theme, links: [] };
+  const sp = { id: newSpaceId(), name: String(name || '').trim().slice(0, 30) || 'Progetto ' + (data.spaces.length + 1), theme, links: [], custom: { accent: null, bg: null } };
   data.spaces.push(sp);
   saveData();
   switchSpace(sp.id);
@@ -371,7 +424,7 @@ function paletteData() {
     tabs: [...tabs.values()].map((t) => { const i = tabInfo(t); return { id: i.id, title: i.title, url: i.url, space: t.space, favicon: i.favicon, home: i.home }; }),
     spaces: spacesList(), activeSpace: data.activeSpace,
     links: sp.links, history: data.history.slice(0, 300),
-    engine: data.engine, engines: ENGINES, fx: data.fx, activeTabHome: !!(activeTab() && isHome(activeTab().view.webContents.getURL()))
+    engine: data.engine, engines: ENGINES, fx: data.fx, adblock: data.adblock, activePinned: !!(activeTab() && activeTab().pinned), canReopen: closedStack.length > 0, activeTabHome: !!(activeTab() && isHome(activeTab().view.webContents.getURL()))
   };
 }
 async function openOverlay(kind, extra) {
@@ -381,9 +434,9 @@ async function openOverlay(kind, extra) {
   if (!cur) return;
   switcherOpen = true; overlayKind = kind;
   win.webContents.focus();
-  const bg = kind === 'palette' ? await snapFull(cur) : null;
+  const bg = (kind === 'palette' || kind === 'downloads' || kind === 'settings') ? await snapFull(cur) : null;
   if (!switcherOpen || overlayKind !== kind) return;
-  const payload = kind === 'palette' ? paletteData() : { spaces: spacesList(), active: data.activeSpace };
+  const payload = kind === 'palette' ? paletteData() : kind === 'downloads' ? { list: dlPublic() } : kind === 'settings' ? settingsData() : { spaces: spacesList(), active: data.activeSpace };
   win.webContents.send('overlay:open', Object.assign({ kind, bg }, payload, extra || {}));
 }
 function closeOverlay(action) {
@@ -419,6 +472,7 @@ function runAction(a) {
 function runCommand(id) {
   const wc = () => { const t = activeTab(); return t && t.view.webContents; };
   if (id.startsWith('theme:')) { setTheme(id.slice(6)); return null; }
+  if (id.startsWith('move:')) { moveTab(activeId, id.slice(5)); return null; }
   if (id.startsWith('engine:')) { const e = id.slice(7); if (ENGINES[e]) { data.engine = e; saveData(); push(); } return null; }
   switch (id) {
     case 'newTab': createTab(HOME_URL, true); break;
@@ -435,9 +489,216 @@ function runCommand(id) {
     case 'tabs3d': return () => openSwitcher(false, 0);
     case 'spaces': return () => openOverlay('spaces');
     case 'newSpaceForm': return () => openOverlay('spaces', { newForm: true });
-    case 'fullscreen': if (win) win.setFullScreen(!win.isFullScreen()); break;
+    case 'fullscreen': toggleFullscreen(); break;
+    case 'settings': return () => openOverlay('settings');
+    case 'find': return () => openFind();
+    case 'downloads': return () => openOverlay('downloads');
+    case 'adblock': toggleAdblock(); break;
+    case 'privateTab': newPrivateTab(); break;
+    case 'reopen': reopenClosed(); break;
+    case 'pin': togglePin(activeId); break;
+    case 'closeOthers': closeOthers(activeId); break;
   }
   return null;
+}
+
+/* ---------- trova nella pagina, schede fissate/private, download, blocco pubblicità ---------- */
+let findText = '';
+function openFind() {
+  if (!win || win.isDestroyed() || switcherOpen) return;
+  const t = activeTab();
+  if (!t) return;
+  if (!findOpen) { findOpen = true; layout(); }
+  win.webContents.focus();
+  win.webContents.send('find:show');
+}
+function closeFind(refocus = true) {
+  if (!findOpen) return;
+  findOpen = false;
+  const t = activeTab();
+  if (t && !t.view.webContents.isDestroyed()) { try { t.view.webContents.stopFindInPage('clearSelection'); } catch (e) { /* niente da pulire */ } }
+  layout();
+  if (win && !win.isDestroyed()) win.webContents.send('find:hide');
+  if (refocus && t) t.view.webContents.focus();
+}
+function findStep(forward) {
+  const t = activeTab();
+  if (!t || !findText) return;
+  t.view.webContents.findInPage(findText, { forward: forward !== false, findNext: false });
+}
+
+function togglePin(id) {
+  const t = tabs.get(id == null ? activeId : id);
+  if (!t) return;
+  t.pinned = !t.pinned;
+  push();
+}
+function moveTab(id, spaceId) {
+  const t = tabs.get(id);
+  if (!t || t.space === spaceId || !data.spaces.some((s) => s.id === spaceId)) return;
+  const src = t.space, wasActive = id === activeId;
+  const list = spaceTabs(src).map((x) => x.id), idx = list.indexOf(id);
+  t.space = spaceId;
+  if (wasActive) {
+    if (findOpen) closeFind(false);
+    detach(t);
+    const nxt = list[idx + 1] !== undefined ? list[idx + 1] : list[idx - 1];
+    if (nxt !== undefined) activate(nxt);
+    else { activeId = null; createTab(HOME_URL, true, src); }
+  }
+  push(); sendSpaces();
+}
+function duplicateTab(id) {
+  const t = tabs.get(id);
+  if (t) createTab(t.view.webContents.getURL() || HOME_URL, true, t.space, { private: t.private });
+}
+function closeOthers(id) {
+  const t = tabs.get(id);
+  if (!t) return;
+  spaceTabs(t.space).filter((x) => x.id !== id && !x.pinned).forEach((x) => closeTab(x.id));
+  if (activeId !== id && !switcherOpen) activate(id);
+}
+function reopenClosed() {
+  const c = closedStack.pop();
+  if (!c) return;
+  if (!data.spaces.some((s) => s.id === c.space)) c.space = data.activeSpace;
+  if (c.space !== data.activeSpace) switchSpace(c.space);
+  const id = createTab(c.url, true, c.space);
+  if (c.pinned && tabs.get(id)) tabs.get(id).pinned = true;
+  push();
+}
+function newPrivateTab() { createTab(HOME_URL, true, data.activeSpace, { private: true }); }
+function toggleAdblock() { data.adblock = !data.adblock; saveData(); push(); buildMenu(); }
+
+function showTabMenu(id) {
+  const t = tabs.get(id);
+  if (!t || !win || win.isDestroyed()) return;
+  const others = data.spaces.filter((s) => s.id !== t.space);
+  Menu.buildFromTemplate([
+    { label: t.pinned ? 'Sblocca scheda' : 'Fissa scheda', click: () => togglePin(id) },
+    { label: 'Duplica scheda', click: () => duplicateTab(id) },
+    ...(others.length ? [{ label: 'Sposta nel progetto', submenu: others.map((s) => ({ label: s.name, click: () => moveTab(id, s.id) })) }] : []),
+    { type: 'separator' },
+    { label: 'Nuova scheda privata', click: () => newPrivateTab() },
+    { type: 'separator' },
+    { label: 'Chiudi scheda', click: () => closeTab(id) },
+    { label: 'Chiudi le altre schede', enabled: spaceTabs(t.space).filter((x) => x.id !== id && !x.pinned).length > 0, click: () => closeOthers(id) }
+  ]).popup({ window: win });
+}
+
+/* download: salvati nella cartella Download, con avanzamento nel pannello */
+const DANGEROUS = /\.(exe|msi|bat|cmd|com|scr|pif|ps1|vbs|js|jse|wsf|jar|app|command|sh|pkg|dmg|apk|dll|lnk|hta|reg|cpl)$/i;
+const dlDir = () => (data.settings.downloadDir && fs.existsSync(data.settings.downloadDir) ? data.settings.downloadDir : app.getPath('downloads'));
+function uniquePath(dir, name) {
+  const ext = path.extname(name), base = path.basename(name, ext);
+  let p = path.join(dir, name), i = 1;
+  while (fs.existsSync(p)) p = path.join(dir, base + ' (' + (i++) + ')' + ext);
+  return p;
+}
+const dlPublic = () => downloads.map((d) => ({ id: d.id, name: d.name, total: d.total, received: d.received, state: d.state, paused: d.paused, t: d.t, host: d.host }));
+let dlTimer = null;
+function sendDl(now) {
+  const go = () => { dlTimer = null; if (win && !win.isDestroyed()) win.webContents.send('dl:update', dlPublic()); };
+  if (now) { clearTimeout(dlTimer); go(); } else if (!dlTimer) dlTimer = setTimeout(go, 250);
+}
+function onWillDownload(item) {
+  const id = nextDl++;
+  const name = path.basename(item.getFilename() || 'download');
+  const dir = dlDir();
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* esiste già */ }
+  const savePath = uniquePath(dir, name);
+  item.setSavePath(savePath);
+  let host = ''; try { host = new URL(item.getURL()).hostname.replace(/^www\./, ''); } catch (e) { /* senza indirizzo */ }
+  const d = { id, name: path.basename(savePath), path: savePath, total: item.getTotalBytes(), received: 0, state: 'progressing', paused: false, t: Date.now(), host };
+  downloads.unshift(d);
+  while (downloads.length > 30) { const i = downloads.map((x) => x.state).lastIndexOf('completed'); if (i < 0) break; downloads.splice(i, 1); }
+  dlItems.set(id, item);
+  item.on('updated', (_e, state) => { d.received = item.getReceivedBytes(); d.total = item.getTotalBytes(); d.paused = item.isPaused(); d.state = state === 'interrupted' ? 'interrupted' : 'progressing'; sendDl(false); });
+  item.once('done', (_e, state) => { d.received = item.getReceivedBytes(); d.state = state; d.paused = false; dlItems.delete(id); sendDl(true); });
+  sendDl(true);
+}
+function dlAction(id, action) {
+  if (action === 'clear') { for (let k = downloads.length - 1; k >= 0; k--) if (!dlItems.has(downloads[k].id)) downloads.splice(k, 1); return sendDl(true); }
+  const i = downloads.findIndex((x) => x.id === id);
+  if (i < 0) return;
+  const d = downloads[i], it = dlItems.get(id);
+  switch (action) {
+    case 'cancel': if (it) it.cancel(); break;
+    case 'pause': if (it && !it.isPaused()) { it.pause(); d.paused = true; } break;
+    case 'resume': if (it && it.isPaused()) { it.resume(); d.paused = false; } break;
+    case 'open':
+      if (d.state === 'completed' && fs.existsSync(d.path)) { if (DANGEROUS.test(d.path)) electronShell.showItemInFolder(d.path); else electronShell.openPath(d.path); }
+      break;
+    case 'show': if (fs.existsSync(d.path)) electronShell.showItemInFolder(d.path); break;
+    case 'remove': if (!it) downloads.splice(i, 1); break;
+  }
+  sendDl(true);
+}
+
+/* blocco pubblicità e tracker + download, su ogni sessione (normale e privata) */
+const tabByWc = (wcId) => { for (const t of tabs.values()) if (!t.view.webContents.isDestroyed() && t.view.webContents.id === wcId) return t; return null; };
+let blkTimer = null;
+function pushBlockedSoon() { if (!blkTimer) blkTimer = setTimeout(() => { blkTimer = null; push(); }, 400); }
+function setupSession(ses) {
+  ses.setUserAgent(ses.getUserAgent().replace(/\s?Electron\/\S+/i, '').replace(/\s?nexus-browser\/\S+/i, ''));
+  ses.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] }, (details, cb) => {
+    if (!data.adblock || details.resourceType === 'mainFrame') return cb({});
+    let host = '';
+    try { host = new URL(details.url).hostname; } catch (e) { return cb({}); }
+    if (!blocklist.isBlocked(host)) return cb({});
+    const t = tabByWc(details.webContentsId);
+    if (t) { t.blocked = (t.blocked || 0) + 1; pushBlockedSoon(); }
+    cb({ cancel: true });
+  });
+  ses.on('will-download', (_e, item) => onWillDownload(item));
+}
+
+/* ---------- impostazioni e anteprime dei link ---------- */
+function settingsData() {
+  return {
+    engine: data.engine, engines: ENGINES, channel: data.channel, fx: data.fx, adblock: data.adblock, theme: curTheme(), spaceName: getSpace().name,
+    previews: data.settings.previews, spin: data.settings.spin, orbit: data.settings.orbit, downloadDir: dlDir(), version: app.getVersion(), historyCount: data.history.length
+  };
+}
+function sendHomes(channel, payload) {
+  for (const t of tabs.values()) if (!t.view.webContents.isDestroyed() && isHome(t.view.webContents.getURL())) t.view.webContents.send(channel, payload);
+}
+function sendSettings() { if (win && !win.isDestroyed()) win.webContents.send('settings:update', settingsData()); }
+
+/* anteprima di un sito: lo carica in una finestra nascosta e ne scatta una foto (con memoria per mezz'ora) */
+const previewCache = new Map();
+let previewChain = Promise.resolve();
+function capturePreview(url) {
+  const hit = previewCache.get(url);
+  if (hit && Date.now() - hit.t < 30 * 60 * 1000) return Promise.resolve(hit.img);
+  const run = () => new Promise((resolve) => {
+    let done = false;
+    const w = new BrowserWindow({ show: false, width: 1280, height: 800, webPreferences: { offscreen: true, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+    const wc = w.webContents;
+    wc.setAudioMuted(true);
+    wc.setWindowOpenHandler(() => ({ action: 'deny' }));
+    const end = (img) => {
+      if (done) return;
+      done = true; clearTimeout(timer);
+      try { w.destroy(); } catch (e) { /* già chiusa */ }
+      if (img) { previewCache.set(url, { t: Date.now(), img }); if (previewCache.size > 60) previewCache.delete(previewCache.keys().next().value); }
+      resolve(img || null);
+    };
+    const shoot = async () => {
+      if (done) return;
+      try {
+        const ni = await wc.capturePage();
+        end(ni.isEmpty() ? null : 'data:image/jpeg;base64,' + ni.resize({ width: 560, quality: 'good' }).toJPEG(72).toString('base64'));
+      } catch (e) { end(null); }
+    };
+    const timer = setTimeout(shoot, 9000);
+    wc.once('did-finish-load', () => setTimeout(shoot, 1100));
+    wc.once('did-fail-load', (_e, code, _d, _u, isMain) => { if (isMain !== false && code !== -3) end(null); });
+    w.loadURL(url).catch(() => end(null));
+  });
+  const p = previewChain.then(run, run);
+  previewChain = p.catch(() => null);
+  return p;
 }
 
 function goActive(text) {
@@ -474,8 +735,9 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, 'shell', 'index.html'));
   ['resize', 'enter-full-screen', 'leave-full-screen', 'maximize', 'unmaximize', 'restore'].forEach((ev) => win.on(ev, layout));
+  ['enter-full-screen', 'leave-full-screen'].forEach((ev) => win.on(ev, push));
   win.webContents.once('did-finish-load', () => createTab(HOME_URL, true));
-  win.on('closed', () => { win = null; tabs.clear(); activeId = null; switcherOpen = false; overlayKind = null; });
+  win.on('closed', () => { win = null; tabs.clear(); activeId = null; switcherOpen = false; overlayKind = null; findOpen = false; });
 }
 
 /* ---------- comunicazione con guscio e home ---------- */
@@ -489,9 +751,26 @@ ipcMain.on('shell:go', (_e, text) => goActive(text));
 ipcMain.on('shell:back', () => { const t = activeTab(); if (t && t.view.webContents.navigationHistory.canGoBack()) t.view.webContents.navigationHistory.goBack(); });
 ipcMain.on('shell:forward', () => { const t = activeTab(); if (t && t.view.webContents.navigationHistory.canGoForward()) t.view.webContents.navigationHistory.goForward(); });
 ipcMain.on('shell:reload', () => { const t = activeTab(); if (!t) return; const wc = t.view.webContents; if (wc.isLoading()) wc.stop(); else wc.reload(); });
+ipcMain.on('shell:fullscreen', () => toggleFullscreen());
 ipcMain.on('shell:home', () => { const t = activeTab(); if (t) t.view.webContents.loadURL(HOME_URL); });
 ipcMain.on('shell:addLink', () => addCurrentToLinks());
 ipcMain.on('shell:setEngine', (_e, id) => { if (ENGINES[id]) { data.engine = id; saveData(); push(); } });
+ipcMain.on('shell:adblock', () => toggleAdblock());
+ipcMain.on('shell:privateTab', () => newPrivateTab());
+ipcMain.on('tab:menu', (_e, id) => showTabMenu(id));
+ipcMain.on('find:open', () => openFind());
+ipcMain.on('find:close', () => closeFind(true));
+ipcMain.on('find:query', (_e, text, forward, next) => {
+  const t = activeTab();
+  if (!t) return;
+  findText = String(text || '').slice(0, 200);
+  const wc = t.view.webContents;
+  if (!findText) { wc.stopFindInPage('clearSelection'); if (win && !win.isDestroyed()) win.webContents.send('find:result', { active: 0, total: 0 }); return; }
+  // in Electron findNext:true avvia una nuova ricerca, false passa al risultato successivo
+  wc.findInPage(findText, { forward: forward !== false, findNext: !next });
+});
+ipcMain.handle('dl:list', () => dlPublic());
+ipcMain.on('dl:action', (_e, id, action) => dlAction(id, String(action)));
 ipcMain.on('theme:set', (_e, name) => setTheme(name));
 
 // cambio scheda 3D
@@ -510,7 +789,7 @@ ipcMain.on('switcher:close', (_e, id) => {
 });
 
 // pianeti e barra comandi
-ipcMain.on('overlay:open', (_e, kind, extra) => { if (kind === 'palette' || kind === 'spaces') openOverlay(kind, extra && extra.newForm ? { newForm: true } : null); });
+ipcMain.on('overlay:open', (_e, kind, extra) => { if (kind === 'palette' || kind === 'spaces' || kind === 'downloads' || kind === 'settings') openOverlay(kind, extra && extra.newForm ? { newForm: true } : null); });
 ipcMain.on('overlay:ready', () => {
   if (!switcherOpen || !win) return;
   const cur = tabs.get(activeId);
@@ -526,8 +805,35 @@ ipcMain.on('spaces:open', () => openOverlay('spaces'));
 ipcMain.handle('data:get', (e) => {
   const t = tabOfSender(e);
   const sp = getSpace(t ? t.space : null);
-  return { links: sp.links, engine: data.engine, engines: ENGINES, theme: sp.theme, spaceName: sp.name };
+  return { links: sp.links, engine: data.engine, engines: ENGINES, theme: sp.theme, spaceName: sp.name, custom: sp.custom || { accent: null, bg: null }, settings: data.settings, savedColors: data.savedColors };
 });
+ipcMain.on('data:saveCustom', (e, c) => { const t = tabOfSender(e); const sp = getSpace(t ? t.space : null); sp.custom = cleanCustom(c); saveData(); sendCustom(sp.id); });
+ipcMain.handle('preview:get', async (e, url) => {
+  const t = tabOfSender(e);
+  if (!t || !data.settings.previews || typeof url !== 'string') return null;
+  if (!getSpace(t.space).links.some((l) => l.url === url)) return null; // solo i link salvati nel progetto
+  return capturePreview(url);
+});
+ipcMain.on('data:saveSwatches', (_e, c) => { data.savedColors = cleanSaved(c); saveData(); sendHomes('saved', data.savedColors); });
+ipcMain.on('settings:set', (_e, key, value) => {
+  switch (key) {
+    case 'previews': case 'spin': data.settings[key] = !!value; break;
+    case 'orbit': { const n = +value; if (isFinite(n)) data.settings.orbit = Math.max(0.3, Math.min(2, n)); break; }
+    case 'engine': if (ENGINES[value]) data.engine = value; break;
+    case 'channel': if (value === 'stable' || value === 'beta') data.channel = value; break;
+    case 'fx': if (value === 'full' || value === 'light') data.fx = value; break;
+    case 'adblock': data.adblock = !!value; break;
+    default: return;
+  }
+  saveData(); push(); buildMenu(); sendHomes('settings', data.settings); sendSettings();
+});
+ipcMain.on('settings:pickDir', async () => {
+  if (!win || win.isDestroyed()) return;
+  const r = await dialog.showOpenDialog(win, { title: 'Cartella dei download', defaultPath: dlDir(), properties: ['openDirectory', 'createDirectory'] });
+  if (!r.canceled && r.filePaths[0]) { data.settings.downloadDir = r.filePaths[0]; saveData(); sendSettings(); }
+});
+ipcMain.on('settings:checkUpdate', () => updater.check({ channel: data.channel, silent: false, win }));
+ipcMain.on('settings:clearHistory', () => { data.history = []; saveData(); sendSettings(); });
 ipcMain.on('data:saveLinks', (e, list) => { const t = tabOfSender(e); getSpace(t ? t.space : null).links = cleanLinks(list); saveData(); });
 ipcMain.on('data:setEngine', (_e, id) => { if (ENGINES[id]) { data.engine = id; saveData(); push(); } });
 ipcMain.on('data:go', (e, text) => { const t = tabOfSender(e); if (t) t.view.webContents.loadURL(resolveInput(text)); });
@@ -557,7 +863,10 @@ function buildMenu() {
     ] }] : []),
     { label: 'File', submenu: [
       { label: 'Nuova scheda', accelerator: 'CmdOrCtrl+T', click: () => { endSwitcher(); createTab(HOME_URL, true); } },
+      { label: 'Nuova scheda privata', accelerator: 'CmdOrCtrl+Alt+N', click: () => { endSwitcher(); newPrivateTab(); } },
+      { label: 'Riapri scheda chiusa', accelerator: 'CmdOrCtrl+Shift+T', click: () => { if (!switcherOpen) reopenClosed(); } },
       { label: 'Chiudi scheda', accelerator: 'CmdOrCtrl+W', click: () => { if (!switcherOpen) closeTab(activeId); } },
+      { label: 'Fissa / sblocca scheda', click: () => { if (!switcherOpen) togglePin(activeId); } },
       { label: 'Barra comandi…', accelerator: 'CmdOrCtrl+K', click: () => openOverlay('palette') },
       { label: 'Vai alla barra indirizzi', accelerator: 'CmdOrCtrl+L', click: () => win && win.webContents.send('shell:focusOmnibox') },
       { label: 'Aggiungi ai link della home', accelerator: 'CmdOrCtrl+D', click: addCurrentToLinks },
@@ -566,7 +875,10 @@ function buildMenu() {
     ] },
     { label: 'Modifica', submenu: [
       { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
-      { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }
+      { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }, { type: 'separator' },
+      { label: 'Trova nella pagina…', accelerator: 'CmdOrCtrl+F', click: () => openFind() },
+      { label: 'Trova successivo', accelerator: 'CmdOrCtrl+G', click: () => findStep(true) },
+      { label: 'Trova precedente', accelerator: 'CmdOrCtrl+Shift+G', click: () => findStep(false) }
     ] },
     { label: 'Progetti', submenu: [
       { label: 'Cambia progetto…', accelerator: 'CmdOrCtrl+Shift+P', click: () => openOverlay('spaces') },
@@ -589,8 +901,11 @@ function buildMenu() {
       { label: 'Riduci', accelerator: 'CmdOrCtrl+-', click: () => zoom(-0.5) },
       { label: 'Dimensione reale', accelerator: 'CmdOrCtrl+0', click: () => zoom(0) },
       { type: 'separator' },
+      { label: 'Impostazioni…', accelerator: 'CmdOrCtrl+,', click: () => openOverlay('settings') },
+      { label: 'Download', accelerator: 'CmdOrCtrl+J', click: () => openOverlay('downloads') },
+      { label: 'Blocco pubblicità e tracker', type: 'checkbox', checked: data.adblock, click: () => toggleAdblock() },
       { label: 'Effetti leggeri (risparmia batteria)', type: 'checkbox', checked: data.fx === 'light', click: (mi) => { data.fx = mi.checked ? 'light' : 'full'; saveData(); push(); } },
-      { role: 'togglefullscreen', label: 'Schermo intero' },
+      { label: 'Schermo intero', accelerator: isMac ? 'Ctrl+Cmd+F' : 'F11', click: () => toggleFullscreen() },
       { label: 'Strumenti sviluppatore', accelerator: isMac ? 'Alt+Cmd+I' : 'Ctrl+Shift+I', click: () => { const wc = wcActive(); if (wc) wc.toggleDevTools(); } }
     ] },
     ...(isMac ? [] : [{ label: 'Aiuto', submenu: [...updateItems, { type: 'separator' }, { label: 'Versione ' + app.getVersion(), enabled: false }] }])
@@ -599,10 +914,10 @@ function buildMenu() {
 }
 
 app.whenReady().then(() => {
-  // User-Agent "pulito": molti siti (Google compreso) trattano meglio un browser che si presenta come Chrome
-  const ua = session.defaultSession.getUserAgent().replace(/\s?Electron\/\S+/i, '').replace(/\s?nexus-browser\/\S+/i, '');
-  session.defaultSession.setUserAgent(ua);
   loadData();
+  // User-Agent "pulito" (molti siti trattano meglio un browser che si presenta come Chrome), blocco pubblicità e download
+  setupSession(session.defaultSession);
+  setupSession(session.fromPartition(PRIVATE_PARTITION));
   buildMenu();
   createWindow();
   // controllo automatico: poco dopo l'avvio e poi ogni 6 ore (parla solo se c'è una versione nuova)

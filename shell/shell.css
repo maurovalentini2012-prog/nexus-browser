@@ -118,3 +118,43 @@ body.loading .sweep { opacity: 1; animation: sweep 1.05s cubic-bezier(.4, 0, .2,
 .kbtn:hover { color: var(--accent-hi); border-color: var(--accent); box-shadow: 0 0 14px -6px var(--accent); }
 .kbtn:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 1px; }
 @media (max-width: 760px) { .kbtn { display: none; } .proj-name { max-width: 80px; } }
+
+/* schermo intero: l'icona cambia da "espandi" a "riduci" */
+#fsBtn .fs-out { display: none; }
+body.is-fs #fsBtn .fs-in { display: none; }
+body.is-fs #fsBtn .fs-out { display: block; }
+
+/* ---------- scheda fissata e scheda privata ---------- */
+.tab.pinned { width: 44px; min-width: 44px; flex: 0 0 44px; padding: 0; justify-content: center; }
+.tab.pinned .title, .tab.pinned .x { display: none; }
+.tab.pinned::after { content: ''; position: absolute; right: 5px; top: 6px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent-hi); box-shadow: 0 0 6px var(--accent-hi); opacity: .85; }
+.tab.priv { border-style: dashed; border-color: color-mix(in srgb, var(--accent-3) 55%, transparent); }
+.tab.priv .fav { color: var(--accent-hi); }
+body.private .toolbar::after { background: repeating-linear-gradient(90deg, var(--accent-3) 0 10px, transparent 10px 16px); opacity: .7; }
+
+/* ---------- blocco pubblicità e download ---------- */
+.tb { position: relative; }
+.tb .badge { position: absolute; top: 1px; right: 0; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px; display: grid; place-items: center; font: 700 9.5px/1 var(--font-ui); color: #04101f; background: var(--accent-hi); box-shadow: 0 0 8px var(--accent); pointer-events: none; }
+.tb .badge[hidden] { display: none; }
+#shieldBtn { color: var(--accent-hi); }
+#shieldBtn .sh-off { display: none; }
+#shieldBtn.off { color: var(--muted); }
+#shieldBtn.off .sh-ok { display: none; }
+#shieldBtn.off .sh-off { display: block; }
+.tb:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+#dlBtn .dl-bar { position: absolute; left: 6px; bottom: 3px; height: 2px; width: calc((100% - 12px) * var(--p, 0)); border-radius: 2px; background: var(--accent-hi); box-shadow: 0 0 8px var(--accent-hi); opacity: 0; transition: width .3s, opacity .3s; }
+#dlBtn.dl-active .dl-bar { opacity: 1; }
+#dlBtn.dl-active { color: var(--accent-hi); animation: dlpulse 1.6s ease-in-out infinite; }
+#dlBtn.dl-done { animation: dldone 1.6s ease-out 1; }
+@keyframes dlpulse { 50% { box-shadow: 0 0 14px -4px var(--accent); } }
+@keyframes dldone { 0% { box-shadow: 0 0 0 0 var(--accent-hi); background: color-mix(in srgb, var(--accent) 40%, transparent); } 100% { box-shadow: 0 0 0 14px transparent; } }
+
+/* ---------- trova nella pagina ---------- */
+.findbar { position: fixed; left: 0; right: 0; top: 88px; height: 44px; z-index: 20; display: flex; align-items: center; gap: 6px; padding: 0 14px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, var(--bg)), var(--bg)); box-shadow: 0 10px 30px -18px var(--accent); }
+.findbar[hidden] { display: none; }
+.findbar > svg { color: var(--accent-hi); flex: none; margin-right: 2px; }
+.findbar input { width: min(340px, 40vw); height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--field); color: var(--fg); outline: 0; user-select: text; -webkit-user-select: text; }
+.findbar input:focus { border-color: var(--accent-hi); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.findbar.none input { border-color: #ff8a8a; box-shadow: 0 0 0 3px color-mix(in srgb, #ff6b6b 22%, transparent); }
+.find-count { min-width: 90px; padding: 0 6px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.findbar .tb { width: 28px; height: 28px; }

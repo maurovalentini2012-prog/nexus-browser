@@ -35,11 +35,17 @@
       { id: 'reload', t: 'Ricarica la pagina', k: 'aggiorna' },
       { id: 'back', t: 'Indietro' }, { id: 'forward', t: 'Avanti' }
     ];
+    c.push({ id: 'find', t: 'Trova nella pagina', k: 'cerca testo ctrl f' }, { id: 'downloads', t: 'Mostra i download', k: 'scaricati file' }, { id: 'settings', t: 'Impostazioni', k: 'preferenze opzioni configurazione' });
+    c.push({ id: 'adblock', t: p.adblock ? 'Spegni il blocco pubblicità' : 'Attiva il blocco pubblicità', k: 'adblock tracker annunci' });
+    c.push({ id: 'privateTab', t: 'Nuova scheda privata', k: 'incognito navigazione anonima' });
+    if (p.canReopen) c.push({ id: 'reopen', t: 'Riapri scheda chiusa', k: 'ripristina annulla chiusura' });
+    c.push({ id: 'pin', t: p.activePinned ? 'Sblocca questa scheda' : 'Fissa questa scheda', k: 'pin blocca' }, { id: 'closeOthers', t: 'Chiudi le altre schede', k: 'tab' });
+    p.spaces.forEach(function (s) { if (s.id !== p.activeSpace) c.push({ id: 'move:' + s.id, t: 'Sposta questa scheda in «' + s.name + '»', k: 'progetto spazio muovi' }); });
     Object.keys(TH).forEach(function (k) { c.push({ id: 'theme:' + k, t: 'Tema: ' + TH[k].name, k: 'colore aspetto' }); });
     Object.keys(p.engines || {}).forEach(function (k) { c.push({ id: 'engine:' + k, t: 'Motore di ricerca: ' + p.engines[k].name, k: 'cerca google' }); });
     c.push({ id: 'fx', t: p.fx === 'light' ? 'Attiva gli effetti completi' : 'Attiva gli effetti leggeri', k: 'batteria animazioni' });
     c.push({ id: 'clearHistory', t: 'Cancella la cronologia', k: 'privacy storia' });
-    c.push({ id: 'fullscreen', t: 'Schermo intero' }, { id: 'devtools', t: 'Strumenti sviluppatore', k: 'ispeziona' }, { id: 'update', t: 'Controlla aggiornamenti', k: 'versione beta' });
+    c.push({ id: 'fullscreen', t: 'Schermo intero / esci', k: 'f11 piena pagina' }, { id: 'devtools', t: 'Strumenti sviluppatore', k: 'ispeziona' }, { id: 'update', t: 'Controlla aggiornamenti', k: 'versione beta' });
     return c;
   }
   function buildBase(p) {
@@ -111,7 +117,7 @@
         if (mode && it.cat !== mode) return;
         if (!mode && (it.cat === 'link' || it.cat === 'hist')) return;
         if (it.cat === 'tab' && it.bonus <= 0 && !mode) return;                  // solo le schede del progetto attuale
-        if (it.cat === 'cmd' && !mode && ['newTab', 'tabs3d', 'spaces', 'newSpaceForm', 'addLink'].indexOf(it.action.id) < 0) return;
+        if (it.cat === 'cmd' && !mode && ['newTab', 'tabs3d', 'spaces', 'newSpaceForm', 'addLink', 'find', 'downloads', 'settings'].indexOf(it.action.id) < 0) return;
         add(it, 50 + (it.bonus || 0));
       });
     } else {

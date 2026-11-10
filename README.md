@@ -13,6 +13,9 @@ La prima pagina è il logo 3D NEXUS con i tuoi link che girano intorno: cliccali
    npm start
    ```
 
+## Provare l'app senza installer
+Nella cartella del progetto: `npm install`, poi `node node_modules/electron/install.js` (serve solo se `npm` avvisa che gli script di installazione non sono stati eseguiti, come nelle versioni più recenti), poi `npm start`.
+
 ## Installer per Mac (.dmg)
 **Subito, dal tuo Mac:** doppio clic su `Crea-Installer-Mac.command` (serve Node.js). In `dist/` trovi:
 - `Nexus-Browser-…-arm64.dmg` → Mac con chip Apple (M1, M2, M3…)
@@ -55,12 +58,23 @@ Per installare un aggiornamento su Windows basta eseguire il nuovo installer: so
 - **Cambio scheda in 3D** (Ctrl+Tab, Ctrl/Cmd+Shift+A o il pulsante nella barra): le schede con anteprima girano su un anello in profondità. Tieni premuto Ctrl e premi Tab per scorrere, rilascia per aprire; frecce, rotella e clic funzionano; la × chiude una scheda; Esc annulla
 - **Progetti** (Ctrl/Cmd+Shift+P o il pulsante in alto a sinistra): ogni progetto ha le sue schede, i suoi link della home e il suo colore. Si scelgono su un'orbita di pianeti (frecce, clic, Invio; "+" crea, Rinomina/Elimina, F2). Ctrl/Cmd+Alt+1…9 salta al progetto; Ctrl/Cmd+Shift+N ne crea uno nuovo
 - **Barra comandi** (Ctrl/Cmd+K): cerca schede aperte, progetti, link, cronologia e comandi in un colpo solo. Scrivi `>` per i soli comandi (cambia tema, motore, effetti, aggiungi ai link…), `@` per i progetti. Invio apre, Ctrl/Cmd+Invio apre in nuova scheda; scrivendo un indirizzo o una frase propone di aprirlo o cercarlo
+- **Trova nella pagina** (Ctrl/Cmd+F): barra con evidenziazione e contatore ("2 di 5"); Invio/Maiusc+Invio per scorrere, Esc per chiudere, Ctrl/Cmd+G per il successivo
+- **Download** (Ctrl/Cmd+J o il pulsante con la freccia): i file vanno nella cartella Download; il pulsante mostra l'avanzamento, il pannello permette pausa, annulla, apri e "mostra nella cartella" (i file eseguibili non si aprono da qui, solo si mostrano)
+- **Blocco pubblicità e tracker**: lo scudo nella barra mostra quanti elementi ha bloccato nella pagina e si accende/spegne con un clic. Blocca le richieste verso reti pubblicitarie e di tracciamento note (elenco in `blocklist.js`), non i video pubblicitari dentro i player
+- **Schede private** (Ctrl/Cmd+Alt+N): sessione separata e in memoria, niente cronologia né accessi salvati; la scheda ha il bordo tratteggiato
+- **Schede fissate**: tasto destro su una scheda → *Fissa scheda* (resta a sinistra, piccola). Dallo stesso menu: *Duplica*, *Sposta nel progetto*, *Nuova scheda privata*, *Chiudi le altre*
+- **Riapri scheda chiusa** (Ctrl/Cmd+Shift+T)
+- **Colori della home**: il pulsante *Colori* permette di scegliere separatamente il colore di scritta/logo/ellissi e quello dello sfondo (anche chiaro); ogni progetto ricorda i suoi. Scegliere un tema dai pallini azzera le scelte personali
+- **Colori salvati**: nel pannello *Colori* il pulsante *Salva* conserva il colore scelto (scritta/ellissi o sfondo) tra "I tuoi colori"; un clic lo riapplica, la × lo elimina. Valgono per tutti i progetti
+- **Anteprima dei link**: passando sopra un link che orbita attorno al logo compare sotto di lui una miniatura del sito (la pagina viene caricata in una finestra nascosta; resta in memoria 30 minuti). Si spegne dalle Impostazioni
+- **Impostazioni** (ingranaggio nella barra, Ctrl/Cmd+, o barra comandi): motore di ricerca, cartella dei download, tema, effetti leggeri, anteprima dei link, logo che ruota da solo, velocità dei link in orbita, blocco pubblicità, cancella cronologia, canale e controllo aggiornamenti. Ogni scelta vale subito
 - **Interfaccia che segue il tema**: vetro scuro e neon che cambiano colore con i pallini nella barra o i colori della home (ciano, viola, smeraldo, ambra); esagono che gira e lampo di luce mentre una pagina carica
+- **Schermo intero**: pulsante nella barra (accanto alle schede 3D), tasto F11 su Windows (Ctrl+Cmd+F su Mac) o comando "schermo intero" nella barra comandi; si esce con lo stesso pulsante o tasto
 - Menu Vista → *Effetti leggeri*: toglie stelle e riflessi per risparmiare batteria
 - Barra indirizzi unica: scrivi un indirizzo o cerca con il motore scelto (Google, DuckDuckGo, Bing, Brave)
 - Indietro, avanti, ricarica, home; Ctrl/Cmd+L barra indirizzi; Ctrl/Cmd+R ricarica
 - Stella nella barra (o Ctrl/Cmd+D): aggiunge la pagina corrente ai link della home
-- Home: pulsante "Link" per aggiungere/rimuovere link (fino a 20), temi colore, "Solo logo", "Rotazione"
+- Home: pulsante "Link" per aggiungere/rimuovere link (fino a 20), "Colori", "Solo logo", "Rotazione"
 - Sessioni e accessi dei siti restano salvati tra un avvio e l'altro
 
 ## Dove aggiungere le tue funzioni

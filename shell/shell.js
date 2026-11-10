@@ -14,6 +14,7 @@
   var ICON_RELOAD = '<svg viewBox="0 0 16 16" width="16" height="16"><path d="M13 8a5 5 0 1 1-1.6-3.7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M12.6 1.8v3h-3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var ICON_STOP = '<svg viewBox="0 0 16 16" width="16" height="16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
   var ICON_HEXSPIN = '<svg class="hexspin" viewBox="0 0 16 16"><path d="M8 1.2l6 3.4v6.8L8 14.8 2 11.4V4.6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+  var ICON_PRIVATE = '<svg viewBox="0 0 16 16" width="16" height="16"><path d="M2.2 8.6c1-3.6 3-5 5.8-5s4.8 1.4 5.8 5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="5.3" cy="11" r="2.1" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="10.7" cy="11" r="2.1" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
   var ICON_NEXUS = '<svg viewBox="0 0 16 16" width="16" height="16"><path d="M8 1.2l6 3.4v6.8L8 14.8 2 11.4V4.6z" fill="none" stroke="#38bdf8" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.7 10.8V5.2h1l2.7 4V5.2h1v5.6h-1l-2.7-4v4z" fill="#7df3ff"/></svg>';
 
   function el(tag, cls) { var e = document.createElement(tag); if (cls) e.className = cls; return e; }
@@ -21,18 +22,21 @@
   function renderTabs() {
     tabsEl.textContent = '';
     state.tabs.forEach(function (t) {
-      var d = el('div', 'tab' + (t.id === state.active ? ' active' : ''));
-      d.title = t.url || t.title;
+      var d = el('div', 'tab' + (t.id === state.active ? ' active' : '') + (t.pinned ? ' pinned' : '') + (t.private ? ' priv' : ''));
+      d.title = (t.private ? 'Scheda privata · ' : '') + (t.url || t.title);
       var fav = el('span', 'fav');
       if (t.loading) fav.innerHTML = ICON_HEXSPIN;
+      else if (t.private) fav.innerHTML = ICON_PRIVATE;
       else if (t.home) fav.innerHTML = ICON_NEXUS;
       else if (t.favicon) { var im = el('img'); im.src = t.favicon; im.alt = ''; im.onerror = function () { im.remove(); }; fav.appendChild(im); }
+      if (t.pinned && !fav.firstChild) { fav.textContent = (t.title || '?').trim().charAt(0).toUpperCase(); fav.style.fontWeight = '800'; }
       var title = el('span', 'title'); title.textContent = t.title;
       var x = el('button', 'x'); x.type = 'button'; x.setAttribute('aria-label', 'Chiudi scheda');
       x.innerHTML = '<svg viewBox="0 0 16 16" width="11" height="11"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
       x.addEventListener('click', function (e) { e.stopPropagation(); api.closeTab(t.id); });
       d.addEventListener('mousedown', function (e) { if (e.button === 1) { e.preventDefault(); api.closeTab(t.id); } });
       d.addEventListener('click', function () { api.switchTab(t.id); });
+      d.addEventListener('contextmenu', function (e) { e.preventDefault(); api.tabMenu(t.id); });
       d.append(fav, title, x);
       tabsEl.appendChild(d);
     });
@@ -51,6 +55,14 @@
     document.body.classList.toggle('loading', !!(cur && cur.loading));
     if (s.theme && s.theme !== themeName) applyTheme(s.theme);
     document.body.classList.toggle('fx-light', s.fx === 'light');
+    document.body.classList.toggle('is-fs', !!s.fullscreen);
+    var sh = document.getElementById('shieldBtn'), shn = document.getElementById('shieldN'), nb = (cur && cur.blocked) || 0;
+    sh.classList.toggle('off', !s.adblock);
+    shn.hidden = !s.adblock || !nb; shn.textContent = nb > 99 ? '99+' : String(nb);
+    sh.title = s.adblock ? 'Blocco pubblicità attivo' + (nb ? ': ' + nb + ' bloccati in questa pagina' : '') + ' — clicca per disattivare' : 'Blocco pubblicità spento — clicca per attivare';
+    document.body.classList.toggle('private', !!(cur && cur.private));
+    var fb = document.getElementById('fsBtn');
+    if (fb) { var t = s.fullscreen ? 'Esci da schermo intero (F11)' : 'Schermo intero (F11)'; fb.title = t; fb.setAttribute('aria-label', t); }
     // l'indirizzo si aggiorna solo se l'utente non sta scrivendo (o se ha cambiato scheda)
     if (cur && (!typing || prevActive !== s.active)) {
       if (omni.value !== cur.url) omni.value = cur.url;
@@ -101,6 +113,9 @@
   btnFwd.addEventListener('click', function () { api.forward(); });
   btnReload.addEventListener('click', function () { api.reload(); });
   document.getElementById('home').addEventListener('click', function () { api.home(); });
+  document.getElementById('shieldBtn').addEventListener('click', function () { api.toggleAdblock(); });
+  document.getElementById('dlBtn').addEventListener('click', function () { api.openOverlay('downloads'); });
+  document.getElementById('fsBtn').addEventListener('click', function () { api.fullscreen(); });
   document.getElementById('tabs3d').addEventListener('click', function () { api.openSwitcher(false, 0); });
   document.getElementById('addlink').addEventListener('click', function () { api.addLink(); });
   engineSel.addEventListener('change', function () { api.setEngine(engineSel.value); });

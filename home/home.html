@@ -22,14 +22,9 @@
     <div class="top">
       <button class="space-pill" id="spacePill" type="button" title="Cambia progetto" hidden><span class="sp-dot"></span><span id="spaceName">Generale</span></button>
       <div class="controls">
-        <div class="swatches" role="radiogroup" aria-label="Colore">
-          <button class="sw" type="button" role="radio" data-theme="cyan" aria-label="Ciano" title="Ciano"></button>
-          <button class="sw" type="button" role="radio" data-theme="violet" aria-label="Viola" title="Viola"></button>
-          <button class="sw" type="button" role="radio" data-theme="emerald" aria-label="Smeraldo" title="Smeraldo"></button>
-          <button class="sw" type="button" role="radio" data-theme="amber" aria-label="Ambra" title="Ambra"></button>
-        </div>
         <button class="btn" type="button" id="spin" aria-pressed="false">Rotazione</button>
         <button class="btn" type="button" id="clean" aria-pressed="false">Solo logo</button>
+        <button class="btn" type="button" id="colors" aria-pressed="false">Colori</button>
         <button class="btn" type="button" id="manage" aria-pressed="false">Link</button>
       </div>
     </div>
@@ -54,6 +49,31 @@
 
     <p class="credit">Concept &amp; Design by <strong>Mauro Valentini</strong></p>
   </div>
+
+  <!-- pannello colori: scritta/ellissi e sfondo si cambiano separatamente -->
+  <aside class="panel colors" id="colorPanel" hidden aria-label="Colori della home">
+    <header>
+      <h2>Colori della home</h2>
+      <button class="btn small" type="button" id="closeColors" aria-label="Chiudi">Chiudi</button>
+    </header>
+    <div class="crow">
+      <div class="cl"><b>Scritta, logo ed ellissi</b><span>il colore che brilla</span></div>
+      <input type="color" id="cAccent" value="#38bdf8" aria-label="Colore di scritta, logo ed ellissi">
+    </div>
+    <div class="presets" id="pAccent" role="group" aria-label="Colori rapidi per scritta e ellissi"></div>
+    <div class="saved"><span>I tuoi colori</span><div class="presets" id="sAccent" role="group" aria-label="Colori salvati per scritta e ellissi"></div><button class="btn small ghost" type="button" id="saveAccent">Salva</button></div>
+    <div class="crow">
+      <div class="cl"><b>Sfondo</b><span>lo spazio dietro</span></div>
+      <input type="color" id="cBg" value="#050b18" aria-label="Colore dello sfondo">
+    </div>
+    <div class="presets" id="pBg" role="group" aria-label="Colori rapidi per lo sfondo"></div>
+    <div class="saved"><span>I tuoi colori</span><div class="presets" id="sBg" role="group" aria-label="Colori salvati per lo sfondo"></div><button class="btn small ghost" type="button" id="saveBg">Salva</button></div>
+    <p class="note">Ogni progetto ricorda i suoi colori. Scegliendo un tema dai pallini in alto si torna ai colori del tema.</p>
+    <button class="btn small ghost" type="button" id="cReset">Ripristina i colori del tema</button>
+  </aside>
+
+  <!-- anteprima del sito sotto il link -->
+  <div class="pv" id="pv" hidden aria-hidden="true"><div class="pv-img" id="pvImg"></div><div class="pv-meta"><b id="pvT"></b><span id="pvH"></span></div></div>
 
   <!-- pannello gestione link -->
   <aside class="panel" id="panel" hidden aria-label="Gestione link">
