@@ -65,21 +65,29 @@
 
   /* ---------- ricerca ---------- */
   var engineSel = document.getElementById('engine'), q = document.getElementById('q');
+  var ASK_MODE = '__ask__', askMode = lsGet('nexus-askmode') !== 'off';
   function buildEngineSelect() {
     engineSel.textContent = '';
+    if (api && api.openAsk) { var oa = document.createElement('option'); oa.value = ASK_MODE; oa.textContent = 'Chiedi a Nexus (risposta)'; engineSel.appendChild(oa); }
     Object.keys(engines).forEach(function (k) {
       var o = document.createElement('option'); o.value = k; o.textContent = engines[k].name; engineSel.appendChild(o);
     });
     if (!engines[engineId]) engineId = 'google';
-    engineSel.value = engineId;
+    engineSel.value = (api && api.openAsk && askMode) ? ASK_MODE : engineId;
+    updatePh();
   }
+  function updatePh() { q.placeholder = engineSel.value === ASK_MODE ? 'Scrivi qui la tua domanda: Nexus ti risponde' : 'Cerca nel web o digita un indirizzo'; }
   engineSel.addEventListener('change', function () {
+    if (engineSel.value === ASK_MODE) { askMode = true; lsSet('nexus-askmode', 'on'); updatePh(); q.focus(); return; }
+    askMode = false; lsSet('nexus-askmode', 'off'); updatePh();
     engineId = engineSel.value;
     if (api) api.homeSetEngine(engineId); else lsSet('nexus-engine', engineId);
   });
   document.getElementById('searchForm').addEventListener('submit', function (e) {
     e.preventDefault();
-    if (q.value.trim()) goTo(q.value);
+    if (!q.value.trim()) return;
+    if (engineSel.value === ASK_MODE && api && api.openAsk) { api.openAsk(q.value.trim()); return; }
+    goTo(q.value);
   });
 
   /* ---------- catena di chip che orbitano ---------- */
@@ -655,6 +663,8 @@
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !cpanel.hidden) toggleColors(false); });
   manageBtn.addEventListener('click', function () { if (!panel.hidden) toggleColors(false); }); // aprire i link chiude i colori
 
+  var askHome = document.getElementById('askHome');
+  if (askHome) askHome.addEventListener('click', function () { if (api && api.openAsk) api.openAsk(); });
   var pill = document.getElementById('spacePill');
   if (pill && api) pill.addEventListener('click', function () { api.openSpaces(); });
   loadData().then(function () {

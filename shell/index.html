@@ -42,6 +42,9 @@
       </button>
     </form>
 
+    <button class="tb" id="askBtn" title="Chiedi a Nexus (Ctrl/Cmd+Shift+K)" aria-label="Chiedi a Nexus">
+      <svg viewBox="0 0 16 16" width="16" height="16"><path d="M8 1.5l1.3 3.6 3.6 1.3-3.6 1.3L8 11.3 6.7 7.7 3.1 6.4l3.6-1.3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M12.6 10.6l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6z" fill="currentColor"/></svg>
+    </button>
     <button class="tb" id="favBtn" title="Preferiti (Ctrl/Cmd+Shift+O)" aria-label="Preferiti">
       <svg viewBox="0 0 16 16" width="16" height="16"><path d="M3.6 1.9h8.8v12.2L8 11.3l-4.4 2.8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
     </button>
@@ -166,6 +169,7 @@
         <div class="fv-content">
           <div class="fv-tools">
             <input id="fvSearch" type="search" placeholder="Cerca nei preferiti" aria-label="Cerca nei preferiti" autocomplete="off">
+            <button class="spc-btn" id="fvImport" type="button" title="Da Chrome, Safari o Firefox (file HTML)">Importa</button>
             <button class="spc-btn" id="fvAddCur" type="button" title="Salva la pagina aperta">Aggiungi pagina</button>
           </div>
           <form class="fv-add" id="fvAddForm" autocomplete="off">

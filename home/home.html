@@ -20,13 +20,32 @@
 
   <div class="ui">
     <div class="top">
-      <button class="space-pill" id="spacePill" type="button" title="Cambia progetto" hidden><span class="sp-dot"></span><span id="spaceName">Generale</span></button>
+    <aside class="wx" id="wx" aria-label="Meteo e ora" hidden>
+      <canvas id="wxc" width="96" height="96" aria-hidden="true"></canvas>
+      <button class="wx-txt" id="wxOpen" type="button" title="Cambia luogo">
+        <span class="wx-time" id="wxTime">--:--</span>
+        <span class="wx-date" id="wxDate"></span>
+        <span class="wx-now"><b id="wxTemp">--°</b><em id="wxCond"></em></span>
+        <span class="wx-place" id="wxPlace">Imposta la città</span>
+      </button>
+    </aside>
       <div class="controls">
+        <button class="space-pill" id="spacePill" type="button" title="Cambia progetto" hidden><span class="sp-dot"></span><span id="spaceName">Generale</span></button>
+        <button class="btn" type="button" id="askHome">Chiedi</button>
+        <button class="btn" type="button" id="wxBtn">Meteo</button>
         <button class="btn" type="button" id="spin" aria-pressed="false">Rotazione</button>
         <button class="btn" type="button" id="clean" aria-pressed="false">Solo logo</button>
         <button class="btn" type="button" id="colors" aria-pressed="false">Colori</button>
         <button class="btn" type="button" id="manage" aria-pressed="false">Link</button>
       </div>
+    </div>
+
+    <div class="wx-pop" id="wxPop" role="dialog" aria-label="Luogo e meteo" hidden>
+      <form id="wxForm" autocomplete="off"><input id="wxQ" type="text" placeholder="Scrivi una città" aria-label="Città" maxlength="80"><button class="btn small" type="submit">Cerca</button></form>
+      <div class="wx-res" id="wxRes"></div>
+      <button class="btn small" type="button" id="wxGps">Usa la mia posizione</button>
+      <p class="wx-note" id="wxNote">La posizione è approssimata dal tuo indirizzo internet. Il meteo arriva da Open-Meteo (gratis).</p>
+      <button class="btn small ghost" type="button" id="wxHide">Nascondi dalla home</button>
     </div>
 
     <div class="center">
@@ -95,5 +114,6 @@
 <script src="../vendor/three.min.js"></script>
 <script src="../shared/themes.js"></script>
 <script src="home.js"></script>
+<script src="weather.js"></script>
 </body>
 </html>

@@ -35,7 +35,7 @@
       { id: 'reload', t: 'Ricarica la pagina', k: 'aggiorna' },
       { id: 'back', t: 'Indietro' }, { id: 'forward', t: 'Avanti' }
     ];
-    c.push({ id: 'find', t: 'Trova nella pagina', k: 'cerca testo ctrl f' }, { id: 'downloads', t: 'Mostra i download', k: 'scaricati file' }, { id: 'favorites', t: 'Apri i preferiti', k: 'segnalibri cartelle' }, { id: 'history', t: 'Apri la cronologia', k: 'pagine visitate storico' }, { id: 'screenshot', t: 'Salva una foto della pagina', k: 'screenshot schermata immagine' }, { id: 'openFile', t: 'Apri un file dal computer', k: 'pdf documento immagine' }, { id: 'zipOpen', t: 'Apri o estrai un archivio ZIP', k: 'zip unzip decomprimi' }, { id: 'zipCreate', t: 'Crea un archivio ZIP', k: 'zip comprimi zippa' }, { id: 'settings', t: 'Impostazioni', k: 'preferenze opzioni configurazione' });
+    c.push({ id: 'find', t: 'Trova nella pagina', k: 'cerca testo ctrl f' }, { id: 'downloads', t: 'Mostra i download', k: 'scaricati file' }, { id: 'favorites', t: 'Apri i preferiti', k: 'segnalibri cartelle' }, { id: 'ask', t: 'Chiedi a Nexus (assistente)', k: 'ai intelligenza domanda risposta chat foto documento' }, { id: 'history', t: 'Apri la cronologia', k: 'pagine visitate storico' }, { id: 'screenshot', t: 'Salva una foto della pagina', k: 'screenshot schermata immagine' }, { id: 'openFile', t: 'Apri un file dal computer', k: 'pdf documento immagine' }, { id: 'zipOpen', t: 'Apri o estrai un archivio ZIP', k: 'zip unzip decomprimi' }, { id: 'zipCreate', t: 'Crea un archivio ZIP', k: 'zip comprimi zippa' }, { id: 'settings', t: 'Impostazioni', k: 'preferenze opzioni configurazione' });
     c.push({ id: 'adblock', t: p.adblock ? 'Spegni il blocco pubblicità' : 'Attiva il blocco pubblicità', k: 'adblock tracker annunci' });
     c.push({ id: 'privateTab', t: 'Nuova scheda privata', k: 'incognito navigazione anonima' });
     if (p.canReopen) c.push({ id: 'reopen', t: 'Riapri scheda chiusa', k: 'ripristina annulla chiusura' });
@@ -117,7 +117,7 @@
         if (mode && it.cat !== mode) return;
         if (!mode && (it.cat === 'link' || it.cat === 'hist')) return;
         if (it.cat === 'tab' && it.bonus <= 0 && !mode) return;                  // solo le schede del progetto attuale
-        if (it.cat === 'cmd' && !mode && ['newTab', 'tabs3d', 'spaces', 'newSpaceForm', 'addLink', 'find', 'downloads', 'settings', 'favorites', 'history', 'screenshot', 'openFile', 'zipOpen', 'zipCreate'].indexOf(it.action.id) < 0) return;
+        if (it.cat === 'cmd' && !mode && ['newTab', 'tabs3d', 'spaces', 'newSpaceForm', 'addLink', 'find', 'downloads', 'settings', 'favorites', 'ask', 'history', 'screenshot', 'openFile', 'zipOpen', 'zipCreate'].indexOf(it.action.id) < 0) return;
         add(it, 50 + (it.bonus || 0));
       });
     } else {

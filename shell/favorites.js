@@ -141,8 +141,15 @@
     var folder = D.folders.some(function (c) { return c.id === sel; }) ? sel : null;
     api.favOp({ op: 'addCurrent', folder: folder });
   });
+  $('fvImport').addEventListener('click', function () {
+    api.favImport().then(function (r) {
+      if (!r || r.cancelled) return;
+      foot.textContent = r.ok ? 'Importati ' + r.added + ' preferiti' + (r.folders ? ' in ' + r.folders + ' nuove cartelle' : '') + (r.skipped ? ' (' + r.skipped + ' già presenti o non validi)' : '') + '.' : (r.error || 'Importazione non riuscita.');
+    });
+  });
   $('fvClose').addEventListener('click', function () { api.overlayClose(null); });
   $('favBtn').addEventListener('click', function () { api.openOverlay('favorites'); });
+  $('askBtn').addEventListener('click', function () { api.openAsk(); });
   document.addEventListener('keydown', function (e) { if (open && e.key === 'Escape') { e.preventDefault(); api.overlayClose(null); } }, true);
   panel.addEventListener('mousedown', function (e) { if (e.target === panel || e.target.classList.contains('pal-shot') || e.target.classList.contains('pal-dim')) api.overlayClose(null); });
 })();

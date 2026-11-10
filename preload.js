@@ -3,7 +3,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 const p = location.pathname;
-const isNexusPage = location.protocol === 'file:' && (p.endsWith('/home/home.html') || p.endsWith('/shell/index.html'));
+const isNexusPage = location.protocol === 'file:' && (p.endsWith('/home/home.html') || p.endsWith('/shell/index.html') || p.endsWith('/ask/ask.html'));
 
 if (isNexusPage) {
   contextBridge.exposeInMainWorld('nexus', {
@@ -65,6 +65,26 @@ if (isNexusPage) {
     homeSetEngine: (id) => ipcRenderer.send('data:setEngine', id),
     homeGo: (text) => ipcRenderer.send('data:go', text),
     saveCustom: (c) => ipcRenderer.send('data:saveCustom', c),
+    askStatus: () => ipcRenderer.invoke('ask:status'),
+    askPrefs: (p) => ipcRenderer.invoke('ask:prefs', p || null),
+    askChat: (req) => ipcRenderer.send('ask:chat', req),
+    askCancel: (id) => ipcRenderer.send('ask:cancel', id),
+    askPull: (model) => ipcRenderer.send('ask:pull', model),
+    placeGet: (f) => ipcRenderer.invoke('place:get', !!f),
+    placeSearch: (q) => ipcRenderer.invoke('place:search', q),
+    placeLocate: () => ipcRenderer.invoke('place:locate'),
+    placeSet: (p) => ipcRenderer.invoke('place:set', p),
+    onPlace: (cb) => ipcRenderer.on('place:update', (_e, v) => cb(v)),
+    askExternal: (u) => ipcRenderer.send('ask:external', u),
+    askDeleteModel: (m) => ipcRenderer.invoke('ask:deleteModel', m),
+    askInstall: () => ipcRenderer.send('ask:install'),
+    askOpenOllama: () => ipcRenderer.send('ask:openOllama'),
+    askChats: () => ipcRenderer.invoke('ask:chats'),
+    askSaveChat: (c) => ipcRenderer.send('ask:saveChat', c),
+    askDeleteChat: (id) => ipcRenderer.send('ask:deleteChat', id),
+    askTake: () => ipcRenderer.invoke('ask:take'),
+    onAsk: (ev, cb) => ipcRenderer.on('ask:' + ev, (_e, p) => cb(p)),
+    openAsk: (q) => ipcRenderer.send('ask:open', typeof q === 'string' ? q.slice(0, 2000) : ''),
     zipPick: (mode) => ipcRenderer.invoke('zip:pick', mode),
     zipList: (p) => ipcRenderer.invoke('zip:list', p),
     zipExtract: (p, names) => ipcRenderer.invoke('zip:extract', p, names),
@@ -72,6 +92,7 @@ if (isNexusPage) {
     zipReveal: (p) => ipcRenderer.send('zip:reveal', p),
     historyRemove: (url) => ipcRenderer.send('history:remove', url),
     favOp: (op) => ipcRenderer.send('fav:op', op),
+    favImport: () => ipcRenderer.invoke('fav:import'),
     onFavs: (cb) => ipcRenderer.on('favs:update', (_e, d) => cb(d)),
     onLinks: (cb) => ipcRenderer.on('links', (_e, l) => cb(l)),
     saveSwatches: (c) => ipcRenderer.send('data:saveSwatches', c),
