@@ -669,6 +669,7 @@
     }
     renderSaved(); syncColorUI();
     spin = !!cfg.spin; var sb = document.getElementById('spin'); if (sb) sb.setAttribute('aria-pressed', String(spin));
+    if (api && api.onLinks) api.onLinks(function (l) { if (Array.isArray(l)) { links = l; buildChips(); renderList(); measure(); } });
     if (api && api.onSaved) api.onSaved(function (c) { saved = c || saved; renderSaved(); syncColorUI(); });
     if (api && api.onSettings) api.onSettings(function (s) { var was = cfg.spin; cfg = s; if (s.spin !== was) { spin = !!s.spin; if (sb) sb.setAttribute('aria-pressed', String(spin)); } if (!s.previews) hidePreview(); });
     buildEngineSelect();

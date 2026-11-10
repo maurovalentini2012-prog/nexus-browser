@@ -55,6 +55,7 @@
     row(g, 'Effetti grafici', 'Leggeri: meno sfocature, più fluido sui computer lenti', select([['full', 'Completi'], ['light', 'Leggeri']], S.fx, function (v) { api.setSetting('fx', v); }, 'Effetti grafici'));
 
     g = group('Pagina iniziale');
+    row(g, 'Riapri le schede all\u2019avvio', 'Al prossimo avvio ritrovi le schede che avevi aperto', toggle(S.restore, function (v) { api.setSetting('restore', v); }, 'Riapri le schede all\u2019avvio'));
     row(g, 'Anteprima dei link', 'Passando sopra un link che orbita si vede il sito', toggle(S.previews, function (v) { api.setSetting('previews', v); }, 'Anteprima dei link'));
     row(g, 'Logo che ruota da solo', 'Parte già in rotazione all’apertura della home', toggle(S.spin, function (v) { api.setSetting('spin', v); }, 'Logo che ruota da solo'));
     var rg = el('input', 'st-range'); rg.type = 'range'; rg.min = '0.3'; rg.max = '2'; rg.step = '0.1'; rg.value = String(S.orbit); rg.setAttribute('aria-label', 'Velocità dei link');

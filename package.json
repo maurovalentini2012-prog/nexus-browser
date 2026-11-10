@@ -1,7 +1,7 @@
 {
   "name": "nexus-browser",
   "productName": "Nexus Browser",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Nexus Browser — il tuo universo di progetti. Concept & Design by Mauro Valentini.",
   "main": "main.js",
   "author": "Mauro Valentini",
@@ -9,7 +9,7 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder",
-    "dist:mac": "electron-builder --mac dmg zip --x64 --arm64 --publish never",
+    "dist:mac": "electron-builder --mac dmg zip --arm64 --publish never && electron-builder --mac dmg zip --x64 --publish never",
     "dist:win": "electron-builder --win nsis --x64 --publish never"
   },
   "devDependencies": {
@@ -93,5 +93,8 @@
   },
   "nexusUpdate": {
     "repo": "maurovalentini2012-prog/nexus-browser"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16"
   }
 }

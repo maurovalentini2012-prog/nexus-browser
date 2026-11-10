@@ -5,6 +5,7 @@
    - "overlay": pannelli del guscio che compaiono al posto della pagina (cambio scheda 3D, pianeti dei progetti, barra comandi)
    Per aggiungere nuove funzioni: nuovo pulsante in shell/index.html + nuovo ipcMain.handle qui sotto. */
 
+const AdmZip = require('adm-zip');
 const { app, BrowserWindow, WebContentsView, ipcMain, Menu, session, dialog, shell: electronShell } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -43,7 +44,8 @@ const DEFAULT_LINKS = [
 const MAX_SPACES = 12;
 let data = {
   engine: 'google', channel: 'stable', fx: 'full', adblock: true,
-  settings: { previews: true, spin: false, orbit: 1, downloadDir: null },
+  settings: { previews: true, spin: false, orbit: 1, downloadDir: null, restore: true },
+  zoom: {}, session: null,
   savedColors: { accent: [], bg: [] },
   spaces: [{ id: 'generale', name: 'Generale', theme: 'cyan', links: DEFAULT_LINKS.slice(), custom: { accent: null, bg: null } }],
   activeSpace: 'generale',
@@ -67,11 +69,28 @@ function cleanCustom(c) {
   const ok = (v) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : null);
   return { accent: ok(c && c.accent), bg: ok(c && c.bg) };
 }
+function cleanZoom(z) {
+  const out = {};
+  Object.keys(z && typeof z === 'object' ? z : {}).slice(0, 300).forEach((h) => { const v = +z[h]; if (/^[a-z0-9.:-]{1,100}$/i.test(h) && isFinite(v) && v !== 0 && Math.abs(v) <= 5) out[h] = v; });
+  return out;
+}
+function cleanSession(s) {
+  if (!s || !Array.isArray(s.tabs)) return null;
+  const tabsOut = [];
+  s.tabs.slice(0, 40).forEach((t) => {
+    if (!t || typeof t.url !== 'string') return;
+    const home = /home[\\/]home\.html/.test(t.url) && t.url.startsWith('file:');
+    if (!home && !/^https?:\/\//i.test(t.url)) return;
+    tabsOut.push({ url: home ? 'HOME' : t.url.slice(0, 2000), space: typeof t.space === 'string' ? t.space : null, pinned: !!t.pinned });
+  });
+  return tabsOut.length ? { tabs: tabsOut, active: Math.max(0, Math.min(tabsOut.length - 1, +s.active || 0)) } : null;
+}
 function cleanSettings(s) {
   s = s || {};
   const orbit = +s.orbit;
   return {
     previews: typeof s.previews === 'boolean' ? s.previews : true,
+    restore: typeof s.restore === 'boolean' ? s.restore : true,
     spin: typeof s.spin === 'boolean' ? s.spin : false,
     orbit: isFinite(orbit) && orbit > 0 ? Math.max(0.3, Math.min(2, orbit)) : 1,
     downloadDir: typeof s.downloadDir === 'string' && s.downloadDir ? s.downloadDir : null
@@ -82,6 +101,42 @@ function cleanSaved(c) {
   const list = (a) => [...new Set((Array.isArray(a) ? a : []).map(ok).filter(Boolean))].slice(0, 14);
   return { accent: list(c && c.accent), bg: list(c && c.bg) };
 }
+/* ---------- preferiti: tutti i siti salvati (con cartelle); quelli con "orbit" girano attorno al logo nella home ---------- */
+const newId = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const MAX_ORBIT = 20;
+function normUrl(v) {
+  let t = String(v || '').trim();
+  if (!t) return null;
+  if (!/^https?:\/\//i.test(t)) { t = t.replace(/^[a-z][a-z0-9+.-]*:\/\//i, ''); t = (/^(localhost|127\.|192\.168\.|10\.)/i.test(t) ? 'http://' : 'https://') + t; }
+  try { const u = new URL(t); return (u.protocol === 'http:' || u.protocol === 'https:') && u.hostname ? u.href : null; } catch (e) { return null; }
+}
+function cleanFolders(list) {
+  const out = [], seen = new Set();
+  (Array.isArray(list) ? list : []).slice(0, 60).forEach((f) => {
+    if (!f || typeof f.id !== 'string' || !f.id || seen.has(f.id)) return;
+    seen.add(f.id); out.push({ id: f.id.slice(0, 40), name: String(f.name || 'Cartella').trim().slice(0, 30) || 'Cartella' });
+  });
+  return out;
+}
+function cleanFavs(list, folders) {
+  const out = [], seen = new Set(), fids = new Set(folders.map((f) => f.id));
+  (Array.isArray(list) ? list : []).slice(0, 600).forEach((f) => {
+    const url = normUrl(f && f.url);
+    if (!url || typeof f.id !== 'string' || !f.id || seen.has(f.id)) return;
+    seen.add(f.id);
+    out.push({ id: f.id.slice(0, 40), title: String(f.title || new URL(url).hostname).trim().slice(0, 60), url, folder: fids.has(f.folder) ? f.folder : null, orbit: !!f.orbit });
+  });
+  let n = 0;
+  out.forEach((f) => { if (f.orbit && ++n > MAX_ORBIT) f.orbit = false; });
+  return out;
+}
+function syncLinks(sp) { sp.links = cleanLinks(sp.favs.filter((f) => f.orbit).map((f) => ({ title: f.title, url: f.url }))); }
+function ensureFavs(sp) {
+  sp.folders = cleanFolders(sp.folders);
+  if (!Array.isArray(sp.favs)) sp.favs = (sp.links || []).map((l) => ({ id: newId('f'), title: l.title, url: l.url, folder: null, orbit: true }));
+  sp.favs = cleanFavs(sp.favs, sp.folders);
+  syncLinks(sp);
+}
 function cleanSpace(s) {
   if (!s || typeof s.id !== 'string' || !s.id) return null;
   return {
@@ -89,6 +144,7 @@ function cleanSpace(s) {
     name: String(s.name || 'Progetto').trim().slice(0, 30) || 'Progetto',
     theme: THEMES[s.theme] ? s.theme : 'cyan',
     links: cleanLinks(s.links),
+    folders: s.folders, favs: s.favs,
     custom: cleanCustom(s.custom)
   };
 }
@@ -100,6 +156,8 @@ function loadData() {
     if (d && typeof d.adblock === 'boolean') data.adblock = d.adblock;
     data.settings = cleanSettings(d && d.settings);
     data.savedColors = cleanSaved(d && d.savedColors);
+    data.zoom = cleanZoom(d && d.zoom);
+    data.session = cleanSession(d && d.session);
     if (d && (d.channel === 'stable' || d.channel === 'beta')) data.channel = d.channel;
     let spaces = Array.isArray(d.spaces) ? d.spaces.map(cleanSpace).filter(Boolean).slice(0, MAX_SPACES) : [];
     if (!spaces.length) {
@@ -107,16 +165,18 @@ function loadData() {
       spaces = [{ id: 'generale', name: 'Generale', theme: THEMES[d.theme] ? d.theme : 'cyan', links: Array.isArray(d.links) ? cleanLinks(d.links) : DEFAULT_LINKS.slice(), custom: { accent: null, bg: null } }];
     }
     data.spaces = spaces;
+    data.spaces.forEach(ensureFavs);
     data.activeSpace = spaces.some((s) => s.id === d.activeSpace) ? d.activeSpace : spaces[0].id;
     if (Array.isArray(d.history)) {
       data.history = d.history.filter((h) => h && /^https?:/i.test(h.url)).slice(0, 800).map((h) => ({ url: String(h.url), title: String(h.title || '').slice(0, 200), t: +h.t || 0 }));
     }
   } catch (e) { /* primo avvio */ }
+  data.spaces.forEach(ensureFavs); // anche al primo avvio
 }
 function saveData() {
   try {
     fs.writeFileSync(dataFile(), JSON.stringify({
-      engine: data.engine, channel: data.channel, fx: data.fx, adblock: data.adblock, settings: data.settings, savedColors: data.savedColors, spaces: data.spaces, activeSpace: data.activeSpace, history: data.history
+      engine: data.engine, channel: data.channel, fx: data.fx, adblock: data.adblock, settings: data.settings, savedColors: data.savedColors, zoom: data.zoom, session: data.session, spaces: data.spaces, activeSpace: data.activeSpace, history: data.history
     }, null, 2));
   } catch (e) { console.error('salvataggio dati', e); }
 }
@@ -169,6 +229,10 @@ let overlayKind = null;          // 'switcher' | 'spaces' | 'palette'
 const spaceTabs = (sp) => [...tabs.values()].filter((t) => t.space === (sp || data.activeSpace)).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
 const spacesList = () => data.spaces.map((s) => ({ id: s.id, name: s.name, theme: s.theme, count: spaceTabs(s.id).length, links: s.links.length }));
 
+function fileTitle(url, title) {
+  if (!/^(untitled|)$/i.test(String(title).trim()) && title !== url) return title;
+  try { const n = decodeURIComponent(new URL(url).pathname.split('/').pop() || ''); return n || title; } catch (e) { return title; }
+}
 function tabInfo(t) {
   const wc = t.view.webContents;
   const url = wc.getURL();
@@ -178,7 +242,7 @@ function tabInfo(t) {
     space: t.space,
     home,
     url: home ? '' : url,
-    title: home ? 'Nexus' : (t.title || wc.getTitle() || url || 'Nuova scheda'),
+    title: home ? 'Nexus' : fileTitle(url, t.title || wc.getTitle() || url || 'Nuova scheda'),
     favicon: home ? null : t.favicon,
     loading: wc.isLoading(),
     pinned: !!t.pinned,
@@ -199,9 +263,21 @@ function toggleFullscreen() {
   if (!win || win.isDestroyed()) return;
   win.setFullScreen(!win.isFullScreen());
 }
+let lastSession = '', sessionFrozen = false;
+function updateSession() {
+  if (sessionFrozen || !win || win.isDestroyed() || !tabs.size) return;
+  const list = [...tabs.values()].filter((t) => !t.private);
+  if (list.some((t) => !t.view.webContents.getURL())) return; // schede ancora in avvio: aspetta
+  const s = cleanSession({ tabs: list.map((t) => ({ url: t.view.webContents.getURL(), space: t.space, pinned: t.pinned })), active: list.findIndex((t) => t.id === activeId) });
+  if (!s) return;
+  const j = JSON.stringify(s);
+  if (j !== lastSession) { lastSession = j; data.session = s; saveSoon(); }
+}
 function push() {
   if (win && !win.isDestroyed()) win.webContents.send('shell:state', getState());
+  updateSession();
 }
+const hostKey = (u) => { try { return new URL(u).host; } catch (e) { return null; } };
 function layout() {
   if (!win || win.isDestroyed()) return;
   const t = tabs.get(activeId);
@@ -274,9 +350,9 @@ function createTab(url, makeActive = true, spaceId, opts = {}) {
   const wc = view.webContents;
 
   wc.setWindowOpenHandler(({ url: u }) => { createTab(u, true, tab.space, { private: tab.private }); return { action: 'deny' }; });
-  wc.on('page-title-updated', (_e, title) => { tab.title = title; if (!tab.private) recordTitle(wc.getURL(), title); push(); });
+  wc.on('page-title-updated', (_e, title) => { tab.title = title; if (!tab.private) recordTitle(wc.getURL(), fileTitle(wc.getURL(), title)); push(); });
   wc.on('page-favicon-updated', (_e, icons) => { tab.favicon = icons && icons[0] || null; push(); });
-  wc.on('did-navigate', (_e, u) => { tab.favicon = null; tab.blocked = 0; if (!tab.private) recordVisit(u); });
+  wc.on('did-navigate', (_e, u) => { tab.favicon = null; tab.blocked = 0; if (!tab.private) recordVisit(u); const h = hostKey(u); if (h && /^https?:/i.test(u)) wc.setZoomLevel(data.zoom[h] || 0); });
   wc.on('found-in-page', (_e, r) => { if (tab.id === activeId && win && !win.isDestroyed()) win.webContents.send('find:result', { active: r.activeMatchOrdinal, total: r.matches }); });
   wc.on('did-stop-loading', () => { setTimeout(() => { if (tab.attached && !switcherOpen) snap(tab); }, 700); });
   ['did-navigate', 'did-navigate-in-page', 'did-start-loading', 'did-stop-loading', 'did-fail-load'].forEach((ev) => wc.on(ev, push));
@@ -366,7 +442,7 @@ function createSpace(name) {
   const used = data.spaces.map((s) => s.theme);
   const keys = Object.keys(THEMES);
   const theme = keys.find((k) => !used.includes(k)) || keys[data.spaces.length % keys.length];
-  const sp = { id: newSpaceId(), name: String(name || '').trim().slice(0, 30) || 'Progetto ' + (data.spaces.length + 1), theme, links: [], custom: { accent: null, bg: null } };
+  const sp = { id: newSpaceId(), name: String(name || '').trim().slice(0, 30) || 'Progetto ' + (data.spaces.length + 1), theme, links: [], favs: [], folders: [], custom: { accent: null, bg: null } };
   data.spaces.push(sp);
   saveData();
   switchSpace(sp.id);
@@ -423,7 +499,7 @@ function paletteData() {
   return {
     tabs: [...tabs.values()].map((t) => { const i = tabInfo(t); return { id: i.id, title: i.title, url: i.url, space: t.space, favicon: i.favicon, home: i.home }; }),
     spaces: spacesList(), activeSpace: data.activeSpace,
-    links: sp.links, history: data.history.slice(0, 300),
+    links: sp.favs.map((f) => ({ title: f.title, url: f.url })), history: data.history.slice(0, 300),
     engine: data.engine, engines: ENGINES, fx: data.fx, adblock: data.adblock, activePinned: !!(activeTab() && activeTab().pinned), canReopen: closedStack.length > 0, activeTabHome: !!(activeTab() && isHome(activeTab().view.webContents.getURL()))
   };
 }
@@ -434,9 +510,9 @@ async function openOverlay(kind, extra) {
   if (!cur) return;
   switcherOpen = true; overlayKind = kind;
   win.webContents.focus();
-  const bg = (kind === 'palette' || kind === 'downloads' || kind === 'settings') ? await snapFull(cur) : null;
+  const bg = (kind === 'palette' || kind === 'downloads' || kind === 'settings' || kind === 'favorites' || kind === 'zip' || kind === 'history') ? await snapFull(cur) : null;
   if (!switcherOpen || overlayKind !== kind) return;
-  const payload = kind === 'palette' ? paletteData() : kind === 'downloads' ? { list: dlPublic() } : kind === 'settings' ? settingsData() : { spaces: spacesList(), active: data.activeSpace };
+  const payload = kind === 'palette' ? paletteData() : kind === 'downloads' ? { list: dlPublic() } : kind === 'settings' ? settingsData() : kind === 'favorites' ? favsData() : kind === 'history' ? historyData() : { spaces: spacesList(), active: data.activeSpace };
   win.webContents.send('overlay:open', Object.assign({ kind, bg }, payload, extra || {}));
 }
 function closeOverlay(action) {
@@ -465,6 +541,7 @@ function runAction(a) {
       else createTab(a.url, true);
       break;
     }
+    case 'zip': { const d = downloads.find((x) => x.id === a.id); const p = d && d.state === 'completed' && fs.existsSync(d.path) ? d.path : null; return p ? () => openZip(p) : null; }
     case 'cmd': return runCommand(String(a.id || ''));
   }
   return null;
@@ -491,6 +568,12 @@ function runCommand(id) {
     case 'newSpaceForm': return () => openOverlay('spaces', { newForm: true });
     case 'fullscreen': toggleFullscreen(); break;
     case 'settings': return () => openOverlay('settings');
+    case 'favorites': return () => openOverlay('favorites');
+    case 'history': return () => openOverlay('history');
+    case 'screenshot': return () => savePageShot();
+    case 'zipOpen': return () => openZip(null);
+    case 'zipCreate': return () => openZip(null, 'create');
+    case 'openFile': return () => openFileDialog();
     case 'find': return () => openFind();
     case 'downloads': return () => openOverlay('downloads');
     case 'adblock': toggleAdblock(); break;
@@ -657,7 +740,7 @@ function setupSession(ses) {
 function settingsData() {
   return {
     engine: data.engine, engines: ENGINES, channel: data.channel, fx: data.fx, adblock: data.adblock, theme: curTheme(), spaceName: getSpace().name,
-    previews: data.settings.previews, spin: data.settings.spin, orbit: data.settings.orbit, downloadDir: dlDir(), version: app.getVersion(), historyCount: data.history.length
+    previews: data.settings.previews, restore: data.settings.restore, spin: data.settings.spin, orbit: data.settings.orbit, downloadDir: dlDir(), version: app.getVersion(), historyCount: data.history.length
   };
 }
 function sendHomes(channel, payload) {
@@ -701,11 +784,138 @@ function capturePreview(url) {
   return p;
 }
 
+function favsData() { const sp = getSpace(); ensureFavs(sp); return { favs: sp.favs, folders: sp.folders, spaceName: sp.name, orbitMax: MAX_ORBIT }; }
+function sendFavs() { if (win && !win.isDestroyed()) win.webContents.send('favs:update', favsData()); }
+function sendLinks(sp) {
+  for (const t of tabs.values()) if (t.space === sp.id && !t.view.webContents.isDestroyed() && isHome(t.view.webContents.getURL())) t.view.webContents.send('links', sp.links);
+}
+function favOp(op) {
+  const sp = getSpace(); ensureFavs(sp);
+  const fav = (id) => sp.favs.find((f) => f.id === id);
+  const fol = (id) => sp.folders.find((f) => f.id === id);
+  if (!op || typeof op !== 'object') return;
+  switch (op.op) {
+    case 'add': {
+      const url = normUrl(op.url); if (!url) return;
+      sp.favs.push({ id: newId('f'), title: String(op.title || '').trim().slice(0, 60) || new URL(url).hostname.replace(/^www\./, ''), url, folder: fol(op.folder) ? op.folder : null, orbit: false });
+      break;
+    }
+    case 'addCurrent': addCurrentToLinks(fol(op.folder) ? op.folder : null); return;
+    case 'edit': {
+      const f = fav(op.id); if (!f) return;
+      const url = normUrl(op.url); if (url) f.url = url;
+      const t = String(op.title || '').trim().slice(0, 60); if (t) f.title = t;
+      break;
+    }
+    case 'remove': sp.favs = sp.favs.filter((f) => f.id !== op.id); break;
+    case 'orbit': { const f = fav(op.id); if (!f) return; if (op.on && sp.favs.filter((x) => x.orbit).length >= MAX_ORBIT) { sendFavs(); return; } f.orbit = !!op.on; break; }
+    case 'move': { const f = fav(op.id); if (!f) return; f.folder = fol(op.folder) ? op.folder : null; break; }
+    case 'folderAdd': { if (sp.folders.length >= 60) return; sp.folders.push({ id: newId('c'), name: String(op.name || '').trim().slice(0, 30) || 'Nuova cartella' }); break; }
+    case 'folderRename': { const c = fol(op.id); const n = String(op.name || '').trim().slice(0, 30); if (c && n) c.name = n; break; }
+    case 'folderRemove': sp.folders = sp.folders.filter((c) => c.id !== op.id); sp.favs.forEach((f) => { if (f.folder === op.id) f.folder = null; }); break;
+    default: return;
+  }
+  sp.favs = cleanFavs(sp.favs, sp.folders);
+  syncLinks(sp); saveData(); sendFavs(); sendLinks(sp);
+}
+
+/* ---------- apri file dal computer (PDF, pagine, immagini) e strumento ZIP ---------- */
+async function openFileDialog() {
+  if (!win || win.isDestroyed()) return;
+  const r = await dialog.showOpenDialog(win, { title: 'Apri file', properties: ['openFile'], filters: [
+    { name: 'Documenti e archivi', extensions: ['pdf', 'zip', 'html', 'htm', 'txt', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] }, { name: 'Tutti i file', extensions: ['*'] }] });
+  if (r.canceled || !r.filePaths[0]) return;
+  const f = r.filePaths[0];
+  if (/\.zip$/i.test(f)) openZip(f); else createTab(require('url').pathToFileURL(f).href, true);
+}
+async function openZip(p, mode) {
+  if (!win || win.isDestroyed()) return;
+  if (mode !== 'create' && !p) {
+    const r = await dialog.showOpenDialog(win, { title: 'Apri un archivio ZIP', properties: ['openFile'], filters: [{ name: 'Archivi ZIP', extensions: ['zip'] }] });
+    if (r.canceled || !r.filePaths[0]) { openOverlay('zip', { mode: 'create' }); return; }
+    p = r.filePaths[0];
+  }
+  openOverlay('zip', mode === 'create' ? { mode: 'create' } : { mode: 'view', path: p });
+}
+const uniqueDir = (base) => { let d = base, n = 2; while (fs.existsSync(d)) d = base + ' ' + n++; return d; };
+const bytesOf = (e) => (e && e.header && e.header.size) || 0;
+ipcMain.handle('zip:list', (_e, p) => {
+  try {
+    const z = new AdmZip(String(p));
+    const all = z.getEntries().filter((e) => !e.isDirectory);
+    return { ok: true, path: p, name: path.basename(p), size: fs.statSync(p).size, count: all.length, total: all.reduce((a, e) => a + bytesOf(e), 0),
+      entries: all.slice(0, 3000).map((e) => ({ n: e.entryName, size: bytesOf(e) })) };
+  } catch (err) { return { ok: false, error: 'Non riesco a leggere questo ZIP: ' + String(err.message || err) }; }
+});
+ipcMain.handle('zip:extract', async (_e, p, names) => {
+  try {
+    const r = await dialog.showOpenDialog(win, { title: 'Dove vuoi estrarre?', defaultPath: dlDir(), properties: ['openDirectory', 'createDirectory'], buttonLabel: 'Estrai qui' });
+    if (r.canceled || !r.filePaths[0]) return { ok: false, cancelled: true };
+    const z = new AdmZip(String(p));
+    const want = Array.isArray(names) && names.length ? new Set(names) : null;
+    const list = z.getEntries().filter((e) => !e.isDirectory && (!want || want.has(e.entryName)));
+    if (list.reduce((a, e) => a + bytesOf(e), 0) > 8 * 1024 ** 3) return { ok: false, error: 'L\u2019archivio è troppo grande da estrarre da qui (oltre 8 GB).' };
+    const dest = uniqueDir(path.join(r.filePaths[0], path.basename(p).replace(/\.zip$/i, '') || 'Archivio'));
+    fs.mkdirSync(dest, { recursive: true });
+    let count = 0, skipped = 0;
+    for (const e of list) {
+      const out = path.resolve(dest, e.entryName);
+      if (out !== dest && !out.startsWith(dest + path.sep)) { skipped++; continue; } // percorsi sospetti (../) ignorati
+      try { fs.mkdirSync(path.dirname(out), { recursive: true }); fs.writeFileSync(out, e.getData()); count++; } catch (err) { skipped++; }
+    }
+    return { ok: true, dir: dest, count, skipped };
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
+ipcMain.handle('zip:pick', async (_e, mode) => {
+  const r = await dialog.showOpenDialog(win, mode === 'dirs'
+    ? { title: 'Scegli le cartelle', properties: ['openDirectory', 'multiSelections'] }
+    : mode === 'zip' ? { title: 'Apri un archivio ZIP', properties: ['openFile'], filters: [{ name: 'Archivi ZIP', extensions: ['zip'] }] }
+    : { title: 'Scegli i file', properties: ['openFile', 'multiSelections'] });
+  if (r.canceled) return [];
+  return r.filePaths.map((f) => { let st = null; try { st = fs.statSync(f); } catch (e) { /* sparito */ } return { path: f, name: path.basename(f), dir: !!(st && st.isDirectory()), size: st && st.isFile() ? st.size : 0 }; });
+});
+ipcMain.handle('zip:create', async (_e, paths) => {
+  try {
+    const list = (Array.isArray(paths) ? paths : []).filter((x) => typeof x === 'string' && fs.existsSync(x));
+    if (!list.length) return { ok: false, error: 'Aggiungi almeno un file o una cartella.' };
+    const base = list.length === 1 ? path.basename(list[0]).replace(/\.[^.]*$/, '') : 'Archivio';
+    const r = await dialog.showSaveDialog(win, { title: 'Salva lo ZIP', defaultPath: path.join(dlDir(), base + '.zip'), filters: [{ name: 'Archivio ZIP', extensions: ['zip'] }] });
+    if (r.canceled || !r.filePath) return { ok: false, cancelled: true };
+    const out = /\.zip$/i.test(r.filePath) ? r.filePath : r.filePath + '.zip';
+    const z = new AdmZip();
+    let count = 0;
+    for (const f of list) {
+      if (path.resolve(f) === path.resolve(out)) continue;
+      if (fs.statSync(f).isDirectory()) { z.addLocalFolder(f, path.basename(f)); count++; } else { z.addLocalFile(f); count++; }
+    }
+    z.writeZip(out);
+    return { ok: true, file: out, count, size: fs.statSync(out).size };
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
+ipcMain.on('zip:reveal', (_e, p) => { if (typeof p === 'string' && fs.existsSync(p)) electronShell.showItemInFolder(p); });
+ipcMain.on('zip:openDialog', () => openZip(null));
+
+function historyData() { return { items: data.history.slice(0, 800) }; }
+ipcMain.on('history:remove', (_e, url) => { data.history = data.history.filter((h) => h.url !== url); saveSoon(); });
+async function savePageShot() {
+  const t = activeTab(); if (!t || !win) return;
+  const wc = t.view.webContents;
+  try {
+    const img = await wc.capturePage();
+    if (img.isEmpty()) return;
+    const d = new Date(), p2 = (n) => String(n).padStart(2, '0');
+    const host = (hostKey(wc.getURL()) || 'pagina').replace(/[^a-z0-9.-]/gi, '_');
+    fs.mkdirSync(dlDir(), { recursive: true });
+    const file = uniquePath(dlDir(), 'Nexus-' + host + '-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds()) + '.png');
+    fs.writeFileSync(file, img.toPNG());
+    electronShell.showItemInFolder(file);
+  } catch (e) { console.error('foto pagina', e); }
+}
 function goActive(text) {
   const t = activeTab();
   if (t) t.view.webContents.loadURL(resolveInput(text));
 }
-function addCurrentToLinks() {
+function addCurrentToLinks(folder) {
   const t = activeTab();
   if (!t) return;
   const wc = t.view.webContents;
@@ -714,11 +924,14 @@ function addCurrentToLinks() {
   const sp = getSpace(t.space);
   const u = new URL(url);
   const root = u.origin;
-  if (!sp.links.some((l) => l.url === url || l.url === root || l.url === root + '/')) {
-    sp.links.push({ title: (t.title || u.hostname).replace(/^www\./, '').slice(0, 24), url });
-    sp.links = cleanLinks(sp.links);
-    saveData();
+  ensureFavs(sp);
+  if (!sp.favs.some((f) => f.url === url || f.url === root || f.url === root + '/')) {
+    sp.favs.push({ id: newId('f'), title: (t.title || u.hostname).replace(/^www\./, '').slice(0, 60), url, folder: folder || null, orbit: false });
+    sp.favs = cleanFavs(sp.favs, sp.folders);
+    saveData(); sendFavs();
+    return true;
   }
+  return false;
 }
 
 function createWindow() {
@@ -733,10 +946,24 @@ function createWindow() {
     icon: path.join(__dirname, 'assets', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
+  sessionFrozen = false;
+  win.on('close', () => { updateSession(); sessionFrozen = true; }); // fotografa le schede prima che si chiudano
   win.loadFile(path.join(__dirname, 'shell', 'index.html'));
   ['resize', 'enter-full-screen', 'leave-full-screen', 'maximize', 'unmaximize', 'restore'].forEach((ev) => win.on(ev, layout));
   ['enter-full-screen', 'leave-full-screen'].forEach((ev) => win.on(ev, push));
-  win.webContents.once('did-finish-load', () => createTab(HOME_URL, true));
+  win.webContents.once('did-finish-load', () => {
+    const s = data.settings.restore ? data.session : null;
+    if (!s) { createTab(HOME_URL, true); return; }
+    const ids = [];
+    s.tabs.forEach((t) => {
+      const sp = data.spaces.some((x) => x.id === t.space) ? t.space : data.activeSpace;
+      const id = createTab(t.url === 'HOME' ? HOME_URL : t.url, false, sp);
+      if (t.pinned) { const tb = tabs.get(id); if (tb) tb.pinned = true; }
+      ids.push(id);
+    });
+    const first = ids.find((id) => tabs.get(id).space === data.activeSpace) || ids[0];
+    focusTab(ids[s.active] != null && tabs.get(ids[s.active]).space === data.activeSpace ? ids[s.active] : first);
+  });
   win.on('closed', () => { win = null; tabs.clear(); activeId = null; switcherOpen = false; overlayKind = null; findOpen = false; });
 }
 
@@ -789,7 +1016,7 @@ ipcMain.on('switcher:close', (_e, id) => {
 });
 
 // pianeti e barra comandi
-ipcMain.on('overlay:open', (_e, kind, extra) => { if (kind === 'palette' || kind === 'spaces' || kind === 'downloads' || kind === 'settings') openOverlay(kind, extra && extra.newForm ? { newForm: true } : null); });
+ipcMain.on('overlay:open', (_e, kind, extra) => { if (kind === 'palette' || kind === 'spaces' || kind === 'downloads' || kind === 'settings' || kind === 'favorites' || kind === 'history') openOverlay(kind, extra && extra.newForm ? { newForm: true } : null); });
 ipcMain.on('overlay:ready', () => {
   if (!switcherOpen || !win) return;
   const cur = tabs.get(activeId);
@@ -817,7 +1044,7 @@ ipcMain.handle('preview:get', async (e, url) => {
 ipcMain.on('data:saveSwatches', (_e, c) => { data.savedColors = cleanSaved(c); saveData(); sendHomes('saved', data.savedColors); });
 ipcMain.on('settings:set', (_e, key, value) => {
   switch (key) {
-    case 'previews': case 'spin': data.settings[key] = !!value; break;
+    case 'previews': case 'spin': case 'restore': data.settings[key] = !!value; break;
     case 'orbit': { const n = +value; if (isFinite(n)) data.settings.orbit = Math.max(0.3, Math.min(2, n)); break; }
     case 'engine': if (ENGINES[value]) data.engine = value; break;
     case 'channel': if (value === 'stable' || value === 'beta') data.channel = value; break;
@@ -834,14 +1061,30 @@ ipcMain.on('settings:pickDir', async () => {
 });
 ipcMain.on('settings:checkUpdate', () => updater.check({ channel: data.channel, silent: false, win }));
 ipcMain.on('settings:clearHistory', () => { data.history = []; saveData(); sendSettings(); });
-ipcMain.on('data:saveLinks', (e, list) => { const t = tabOfSender(e); getSpace(t ? t.space : null).links = cleanLinks(list); saveData(); });
+ipcMain.on('data:saveLinks', (e, list) => {
+  const t = tabOfSender(e); const sp = getSpace(t ? t.space : null); ensureFavs(sp);
+  const cl = cleanLinks(list).slice(0, MAX_ORBIT), urls = new Set(cl.map((l) => l.url));
+  sp.favs.forEach((f) => { if (f.orbit && !urls.has(f.url)) f.orbit = false; }); // tolto dall'orbita: resta nei preferiti
+  cl.forEach((l) => {
+    const f = sp.favs.find((x) => x.url === l.url);
+    if (f) { f.orbit = true; f.title = l.title; } else sp.favs.push({ id: newId('f'), title: l.title, url: l.url, folder: null, orbit: true });
+  });
+  sp.favs = cleanFavs(sp.favs, sp.folders); syncLinks(sp); saveData(); sendFavs();
+});
+ipcMain.on('fav:op', (_e, op) => favOp(op));
 ipcMain.on('data:setEngine', (_e, id) => { if (ENGINES[id]) { data.engine = id; saveData(); push(); } });
 ipcMain.on('data:go', (e, text) => { const t = tabOfSender(e); if (t) t.view.webContents.loadURL(resolveInput(text)); });
 
 /* ---------- menu e scorciatoie ---------- */
 function buildMenu() {
   const wcActive = () => { const t = activeTab(); return t && t.view.webContents; };
-  const zoom = (d) => { const wc = wcActive(); if (wc) wc.setZoomLevel(d === 0 ? 0 : wc.getZoomLevel() + d); };
+  const zoom = (d) => {
+    const wc = wcActive(); if (!wc) return;
+    const lv = d === 0 ? 0 : Math.max(-4, Math.min(5, wc.getZoomLevel() + d));
+    wc.setZoomLevel(lv);
+    const h = hostKey(wc.getURL());
+    if (h && /^https?:/i.test(wc.getURL())) { if (lv === 0) delete data.zoom[h]; else data.zoom[h] = lv; saveSoon(); } // lo zoom si ricorda sito per sito
+  };
   const checkNow = () => updater.check({ channel: data.channel, silent: false, win });
   const updateItems = [
     { label: 'Controlla aggiornamenti…', click: checkNow },
@@ -867,6 +1110,9 @@ function buildMenu() {
       { label: 'Riapri scheda chiusa', accelerator: 'CmdOrCtrl+Shift+T', click: () => { if (!switcherOpen) reopenClosed(); } },
       { label: 'Chiudi scheda', accelerator: 'CmdOrCtrl+W', click: () => { if (!switcherOpen) closeTab(activeId); } },
       { label: 'Fissa / sblocca scheda', click: () => { if (!switcherOpen) togglePin(activeId); } },
+      { label: 'Salva una foto della pagina', accelerator: 'CmdOrCtrl+Shift+S', click: () => savePageShot() },
+      { label: 'Apri file…', accelerator: 'CmdOrCtrl+O', click: () => openFileDialog() },
+      { label: 'Apri o crea ZIP…', click: () => openZip(null) },
       { label: 'Barra comandi…', accelerator: 'CmdOrCtrl+K', click: () => openOverlay('palette') },
       { label: 'Vai alla barra indirizzi', accelerator: 'CmdOrCtrl+L', click: () => win && win.webContents.send('shell:focusOmnibox') },
       { label: 'Aggiungi ai link della home', accelerator: 'CmdOrCtrl+D', click: addCurrentToLinks },
@@ -901,6 +1147,8 @@ function buildMenu() {
       { label: 'Riduci', accelerator: 'CmdOrCtrl+-', click: () => zoom(-0.5) },
       { label: 'Dimensione reale', accelerator: 'CmdOrCtrl+0', click: () => zoom(0) },
       { type: 'separator' },
+      { label: 'Cronologia', accelerator: 'CmdOrCtrl+Y', click: () => openOverlay('history') },
+      { label: 'Preferiti', accelerator: 'CmdOrCtrl+Shift+O', click: () => openOverlay('favorites') },
       { label: 'Impostazioni…', accelerator: 'CmdOrCtrl+,', click: () => openOverlay('settings') },
       { label: 'Download', accelerator: 'CmdOrCtrl+J', click: () => openOverlay('downloads') },
       { label: 'Blocco pubblicità e tracker', type: 'checkbox', checked: data.adblock, click: () => toggleAdblock() },
@@ -928,5 +1176,5 @@ app.whenReady().then(() => {
   setInterval(() => { const t = activeTab(); if (t && win && win.isVisible() && !switcherOpen && !t.view.webContents.isLoading()) snap(t); }, 6000);
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
-app.on('before-quit', () => { clearTimeout(saveTimer); saveData(); });
+app.on('before-quit', () => { updateSession(); sessionFrozen = true; clearTimeout(saveTimer); saveData(); });
 app.on('window-all-closed', () => { if (!isMac) app.quit(); });

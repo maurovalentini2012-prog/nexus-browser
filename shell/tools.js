@@ -76,7 +76,7 @@
     var act = el('div', 'dl-act');
     function b(label, a, primary) { var x = el('button', 'spc-btn' + (primary ? ' primary' : ''), label); x.type = 'button'; x.addEventListener('click', function () { api.dlAction(d.id, a); }); act.appendChild(x); }
     if (d.state === 'progressing') { b(d.paused ? 'Riprendi' : 'Pausa', d.paused ? 'resume' : 'pause'); b('Annulla', 'cancel'); }
-    else if (d.state === 'completed') { b('Apri', 'open', true); b('Mostra nella cartella', 'show'); b('Rimuovi', 'remove'); }
+    else if (d.state === 'completed') { b('Apri', 'open', true); if (/\.zip$/i.test(d.name)) { var zb = el('button', 'spc-btn', 'Estrai ZIP…'); zb.type = 'button'; zb.addEventListener('click', function () { api.overlayClose({ t: 'zip', id: d.id }); }); act.appendChild(zb); } b('Mostra nella cartella', 'show'); b('Rimuovi', 'remove'); }
     else b('Rimuovi', 'remove');
     m.appendChild(act); r.appendChild(m);
     return r;
