@@ -271,12 +271,15 @@ function toggleFullscreen() {
 let lastSession = '', sessionFrozen = false;
 function updateSession() {
   if (sessionFrozen || !win || win.isDestroyed() || !tabs.size) return;
-  const list = [...tabs.values()].filter((t) => !t.private);
-  if (list.some((t) => !t.view.webContents.getURL())) return; // schede ancora in avvio: aspetta
-  const s = cleanSession({ tabs: list.map((t) => ({ url: t.view.webContents.getURL(), space: t.space, pinned: t.pinned })), active: list.findIndex((t) => t.id === activeId) });
-  if (!s) return;
-  const j = JSON.stringify(s);
-  if (j !== lastSession) { lastSession = j; data.session = s; saveSoon(); }
+  try {
+    const live = (t) => t && t.view && t.view.webContents && !t.view.webContents.isDestroyed();
+    const list = [...tabs.values()].filter((t) => live(t) && !t.private);
+    if (!list.length || list.some((t) => !t.view.webContents.getURL())) return; // schede ancora in avvio: aspetta
+    const s = cleanSession({ tabs: list.map((t) => ({ url: t.view.webContents.getURL(), space: t.space, pinned: t.pinned })), active: list.findIndex((t) => t.id === activeId) });
+    if (!s) return;
+    const j = JSON.stringify(s);
+    if (j !== lastSession) { lastSession = j; data.session = s; saveSoon(); }
+  } catch (err) { /* la fotografia delle schede non deve mai bloccare il programma */ }
 }
 function push() {
   if (win && !win.isDestroyed()) win.webContents.send('shell:state', getState());
@@ -1190,7 +1193,7 @@ async function askChat(wcs, req) {
 let askPending = '';
 function askOpen(q) {
   q = String(q || '').trim();
-  const ex = spaceTabs().find((t) => !t.private && !t.view.webContents.isDestroyed() && isAsk(t.view.webContents.getURL()));
+  const ex = spaceTabs().find((t) => !t.private && t.view && t.view.webContents && !t.view.webContents.isDestroyed() && isAsk(t.view.webContents.getURL()));
   if (ex) { // esiste già una pagina Chiedi a Nexus in questo progetto: la riuso
     activate(ex.id);
     if (q) ex.view.webContents.send('ask:question', q);
