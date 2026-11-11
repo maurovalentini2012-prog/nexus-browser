@@ -265,10 +265,16 @@
     list.slice(0, 4).forEach(function (im) {
       if (!im || typeof im.src !== 'string' || im.src.indexOf('https://upload.wikimedia.org/') !== 0 || typeof im.url !== 'string' || im.url.indexOf('https://') !== 0) return;
       var a = el('a', 'ph'); a.href = im.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.title = 'Apri la fonte: ' + im.title;
-      var i = el('img'); i.src = im.src; i.alt = im.title; i.loading = 'lazy'; a.appendChild(i);
+      var i = el('img'); i.alt = im.title; i.addEventListener('error', function () { a.remove(); if (!g.childNodes.length) g.remove(); }); i.src = im.src; a.appendChild(i);
       a.appendChild(el('span', null, im.title)); g.appendChild(a);
     });
     if (g.childNodes.length) m.appendChild(g);
+  }
+  function addNoPics(m, subject) {
+    if (!subject) return;
+    var d = el('div', 'sources'); d.appendChild(el('span', null, 'Non sono riuscito a recuperare foto qui.'));
+    var a = el('a', null, 'Cerca foto su Wikimedia Commons'); a.href = 'https://commons.wikimedia.org/w/index.php?search=' + encodeURIComponent(subject) + '&ns6=1'; a.target = '_blank'; a.rel = 'noopener noreferrer'; d.appendChild(a);
+    m.appendChild(d);
   }
   function addSources(m, list) {
     if (!list || !list.length) return;
@@ -343,7 +349,7 @@
     else {
       if (p.stopped && S.aiText) S.aiText += '\n\n(risposta interrotta)';
       if (!S.aiText) { ai.bubble.textContent = 'Nessuna risposta. Riprova.'; }
-      else { renderMd(ai.bubble, S.aiText); addImages(ai.box, p.images); addSources(ai.box, p.sources); addTools(ai.box, S.aiText); S.chat.messages.push({ role: 'assistant', text: S.aiText, att: [], sources: p.sources || [] }); persist(); }
+      else { renderMd(ai.bubble, S.aiText); addImages(ai.box, p.images); addNoPics(ai.box, p.picsMiss); addSources(ai.box, p.sources); addTools(ai.box, S.aiText); S.chat.messages.push({ role: 'assistant', text: S.aiText, att: [], sources: p.sources || [] }); persist(); }
     }
     S.aiEl = null; scrollDown(); $('input').focus();
   });

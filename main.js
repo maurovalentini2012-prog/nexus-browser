@@ -1109,7 +1109,7 @@ async function wikiSearch(q) {
     const hits = JSON.parse(j).query.search || [];
     const out = [];
     for (const h of hits) {
-      const e = await getText('https://it.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=1&explaintext=1&piprop=thumbnail&pithumbsize=520&format=json&titles=' + encodeURIComponent(h.title));
+      const e = await getText('https://it.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=1&explaintext=1&piprop=thumbnail&pithumbsize=500&format=json&titles=' + encodeURIComponent(h.title));
       let text = '', img = '';
       try { const pg = Object.values(JSON.parse(e).query.pages)[0]; text = String(pg.extract || '').slice(0, 1500); const s = pg.thumbnail && pg.thumbnail.source; if (typeof s === 'string' && /^https:\/\/upload\.wikimedia\.org\//.test(s)) img = s; } catch (err) { /* nessun testo */ }
       if (text) out.push({ title: 'Wikipedia: ' + h.title, url: 'https://it.wikipedia.org/wiki/' + encodeURIComponent(h.title.replace(/ /g, '_')), text, img });
@@ -1121,7 +1121,7 @@ const STOP = new Set('quale quali quanto quanti quando dove come perché perche 
 const subjectOf = (q) => String(q).toLowerCase().split(/[^a-zàèéìòù0-9]+/).filter((x) => x.length > 3 && !STOP.has(x)).slice(0, 5).join(' ');
 async function commonsImages(q) {
   const s = subjectOf(q); if (!s) return [];
-  const j = await getJson('https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrlimit=8&format=json&prop=imageinfo&iiprop=url&iiurlwidth=520&gsrsearch=' + encodeURIComponent(s + ' filetype:bitmap'));
+  const j = await getJson('https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrlimit=8&format=json&prop=imageinfo&iiprop=url&iiurlwidth=500&gsrsearch=' + encodeURIComponent(s + ' filetype:bitmap'));
   const pages = (j && j.query && j.query.pages) ? Object.values(j.query.pages).sort((a, b) => (a.index || 0) - (b.index || 0)) : [];
   const out = [];
   for (const p of pages) {
@@ -1132,9 +1132,15 @@ async function commonsImages(q) {
   }
   return out;
 }
+async function wikiSummaryImg(title) {
+  const j = await getJson('https://it.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(String(title).replace(/ /g, '_')));
+  const t = j && j.thumbnail && j.thumbnail.source;
+  if (typeof t === 'string' && /^https:\/\/upload\.wikimedia\.org\//.test(t)) return { src: t, title: String(j.title || title).slice(0, 60), url: 'https://it.wikipedia.org/wiki/' + encodeURIComponent(String(j.title || title).replace(/ /g, '_')) };
+  return null;
+}
 async function wikiImages(q) {
   const s = subjectOf(q) || q; if (!s) return [];
-  const j = await getJson('https://it.wikipedia.org/w/api.php?action=query&generator=search&gsrlimit=8&format=json&prop=pageimages|info&piprop=thumbnail&pithumbsize=520&inprop=url&gsrsearch=' + encodeURIComponent(s));
+  const j = await getJson('https://it.wikipedia.org/w/api.php?action=query&generator=search&gsrlimit=8&format=json&prop=pageimages|info&piprop=thumbnail&pithumbsize=500&inprop=url&gsrsearch=' + encodeURIComponent(s));
   const pages = (j && j.query && j.query.pages) ? Object.values(j.query.pages).sort((a, b) => (a.index || 0) - (b.index || 0)) : [];
   const out = [];
   for (const p of pages) {
@@ -1162,6 +1168,7 @@ async function ddgSearch(q) {
 const NEWS_RE = /\b(notizie|notizia|news|ultime|ultim[ao] ora|attualit[aà]|cosa [eè] successo|che succede|cosa succede|oggi)\b/i;
 async function webContext(question, send) {
   const sources = [], parts = [], images = [];
+  if (FAKE_NET && /colosseo/i.test(question)) return { ctx: '[1] Colosseo\nAnfiteatro di Roma.', sources: [{ title: 'Wikipedia: Colosseo', url: 'https://it.wikipedia.org/wiki/Colosseo' }], images: [{ src: 'https://upload.wikimedia.org/wikipedia/commons/x/x.jpg', title: 'Colosseo', url: 'https://it.wikipedia.org/wiki/Colosseo' }], pics: true };
   const add = (title, url, text) => { sources.push({ title, url }); parts.push('[' + sources.length + '] ' + title + ' (' + url + ')\n' + text); };
   const urls = [...new Set((question.match(/https?:\/\/[^\s<>"')]+/gi) || []))].slice(0, 2);
   if (urls.length) {
@@ -1185,17 +1192,23 @@ async function webContext(question, send) {
     if (wantsPics || !images.length) {
       try {
         let more = await wikiImages(q).catch(() => []);
-        if (wantsPics) { const ci = await commonsImages(q).catch(() => []); more = more.concat(ci); }
-        else more = more.filter((x) => qw.some((k) => x.title.toLowerCase().includes(k))).slice(0, 2);
         if (wantsPics) more = more.filter((x) => qw.some((k) => x.title.toLowerCase().includes(k)));
+        else more = more.filter((x) => qw.some((k) => x.title.toLowerCase().includes(k))).slice(0, 2);
         more.forEach((x) => { if (images.length < 4 && !images.some((y) => y.src === x.src)) images.push(x); });
-      } catch (e) { /* nessuna foto */ }
+      } catch (e) { console.error('foto wiki:', e && e.message); }
     }
+    if (wantsPics && images.length < 4) { // altre fonti: immagine "riassunto" della voce e archivio Commons
+      try {
+        if (w[0]) { const sm = await wikiSummaryImg(w[0].title.replace(/^Wikipedia: /, '')); if (sm && !images.some((y) => y.src === sm.src)) images.push(sm); }
+        if (images.length < 4) { const ci = await commonsImages(q).catch(() => []); ci.forEach((x) => { if (images.length < 4 && !images.some((y) => y.src === x.src)) images.push(x); }); }
+      } catch (e) { console.error('foto commons:', e && e.message); }
+    }
+    if (wantsPics) console.log('[foto] "' + subjectOf(q) + '" -> ' + images.length + ' immagini');
     d.slice(0, 5).forEach((r) => add(r.title, r.url, r.text));
   }
   let ctx = parts.join('\n\n');
   if (ctx.length > 6500) ctx = ctx.slice(0, 6500);
-  return { ctx, sources: sources.slice(0, 20), images: images.slice(0, 4), pics: wantsPics };
+  return { ctx, sources: sources.slice(0, 20), images: images.slice(0, 4), pics: wantsPics && images.length > 0, picsMiss: wantsPics && !images.length ? (subjectOf(q) || q) : '' };
 }
 
 async function askChat(wcs, req) {
@@ -1211,12 +1224,12 @@ async function askChat(wcs, req) {
       if (Array.isArray(m.images) && m.images.length) o.images = m.images.slice(0, 4).map((x) => String(x).slice(0, 4000000));
       return o;
     });
-    let sources = [], images = [], picsAsked = false;
+    let sources = [], images = [], picsAsked = false, picsMiss = '';
     const last = msgs[msgs.length - 1];
     if (req.web && last && last.role === 'user' && !req.sensitive) {
       send('state', { id, text: 'Cerco informazioni aggiornate…' });
       const w = await webContext(String(req.question || ''), (t) => send('state', { id, text: t }));
-      sources = w.sources; images = w.images || []; picsAsked = !!w.pics;
+      sources = w.sources; images = w.images || []; picsAsked = !!w.pics; picsMiss = w.picsMiss || '';
       if (w.ctx) last.content = 'INFORMAZIONI DAL WEB (cercate adesso, oggi è ' + new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' }) + '):\n' + w.ctx + '\n\nREGOLE: per date, eventi, prezzi e fatti recenti usa SOLO queste informazioni, non la tua memoria, che è vecchia. Se parlano di date già passate rispetto a oggi, ignorale e prendi la prima data FUTURA indicata. Se qui non c’è la risposta, dì chiaramente che non l’hai trovata invece di inventare.\n\nDOMANDA:\n' + last.content;
     }
     if (last && last.role === 'user' && picsAsked) last.content += '\n\n[Come rispondere: l’utente vuole vedere foto, che Nexus mostra sotto la tua risposta. Rispondi in 2-4 frasi: di cosa si tratta e una curiosità. Non dare orari, prezzi o consigli di visita e non elencare siti.]';
@@ -1235,7 +1248,7 @@ async function askChat(wcs, req) {
         try { const j = JSON.parse(line); if (j.error) throw new Error(j.error); if (j.message && j.message.content) send('chunk', { id, text: j.message.content }); } catch (e) { if (e && e.message && !/JSON/.test(e.message)) throw e; }
       }
     }
-    send('done', { id, sources, images });
+    send('done', { id, sources, images, picsMiss });
   } catch (e) {
     const stopped = e && e.name === 'AbortError';
     send('done', { id, stopped, error: stopped ? null : (/fetch failed|ECONNREFUSED/i.test(String(e.message)) ? 'Non riesco a parlare con il motore. Apri Ollama e riprova.' : String(e.message || e)) });
