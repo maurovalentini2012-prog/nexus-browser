@@ -1123,7 +1123,7 @@ const STOP = new Set('quale quali quanto quanti quando dove come perché perche 
 const subjectOf = (q) => String(q).toLowerCase().split(/[^a-zàèéìòù0-9]+/).filter((x) => x.length > 3 && !STOP.has(x)).slice(0, 5).join(' ');
 async function commonsImages(q) {
   const s = subjectOf(q); if (!s) return [];
-  const j = await getJson('https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrlimit=8&format=json&prop=imageinfo&iiprop=url&iiurlwidth=500&gsrsearch=' + encodeURIComponent(s + ' filetype:bitmap'));
+  const j = await getJson('https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrlimit=15&format=json&prop=imageinfo&iiprop=url&iiurlwidth=500&gsrsearch=' + encodeURIComponent(s));
   const pages = (j && j.query && j.query.pages) ? Object.values(j.query.pages).sort((a, b) => (a.index || 0) - (b.index || 0)) : [];
   const out = [];
   for (const p of pages) {
@@ -1138,6 +1138,13 @@ async function wikiSummaryImg(title) {
   const j = await getJson('https://it.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(String(title).replace(/ /g, '_')));
   const t = j && j.thumbnail && j.thumbnail.source;
   if (typeof t === 'string' && /^https:\/\/upload\.wikimedia\.org\//.test(t)) return { src: t, title: String(j.title || title).slice(0, 60), url: 'https://it.wikipedia.org/wiki/' + encodeURIComponent(String(j.title || title).replace(/ /g, '_')) };
+  return null;
+}
+async function wikiLead(title) { // immagine principale di una voce (segue i reindirizzamenti)
+  const j = await getJson('https://it.wikipedia.org/w/api.php?action=query&redirects=1&prop=pageimages&piprop=thumbnail&pithumbsize=500&format=json&titles=' + encodeURIComponent(title));
+  const pg = j && j.query && j.query.pages ? Object.values(j.query.pages)[0] : null;
+  const t = pg && pg.thumbnail && pg.thumbnail.source;
+  if (typeof t === 'string' && /^https:\/\/upload\.wikimedia\.org\//.test(t)) return { src: t, title: String(pg.title || title).slice(0, 60), url: 'https://it.wikipedia.org/wiki/' + encodeURIComponent(String(pg.title || title).replace(/ /g, '_')) };
   return null;
 }
 async function wikiImages(q) {
@@ -1199,11 +1206,18 @@ async function webContext(question, send) {
         more.forEach((x) => { if (images.length < 4 && !images.some((y) => y.src === x.src)) images.push(x); });
       } catch (e) { console.error('foto wiki:', e && e.message); }
     }
-    if (wantsPics && images.length < 4) { // altre fonti: immagine "riassunto" della voce e archivio Commons
+    if (wantsPics && images.length < 4) { // altre fonti: voce con il nome del soggetto, voci trovate, archivio Commons
+      const dg = [];
+      const push = (x) => { if (x && images.length < 4 && !images.some((y) => y.src === x.src)) images.push(x); };
       try {
-        if (w[0]) { const sm = await wikiSummaryImg(w[0].title.replace(/^Wikipedia: /, '')); if (sm && !images.some((y) => y.src === sm.src)) images.push(sm); }
-        if (images.length < 4) { const ci = await commonsImages(q).catch(() => []); ci.forEach((x) => { if (images.length < 4 && !images.some((y) => y.src === x.src)) images.push(x); }); }
-      } catch (e) { console.error('foto commons:', e && e.message); }
+        const subj = subjectOf(q), cap = subj.charAt(0).toUpperCase() + subj.slice(1);
+        const titles = [...new Set([cap, ...w.slice(0, 2).map((r) => r.title.replace(/^Wikipedia: /, ''))].filter(Boolean))];
+        let n = 0;
+        for (const t of titles) { const x = await wikiLead(t).catch(() => null); if (x) { n++; push(x); } }
+        dg.push('voci ' + n + '/' + titles.length);
+      } catch (e) { dg.push('voci errore'); }
+      try { const ci = await commonsImages(q).catch(() => []); dg.push('commons ' + ci.length); ci.forEach(push); } catch (e) { dg.push('commons errore'); }
+      if (!images.length) NETFAIL.push(dg.join(' '));
     }
     if (wantsPics) console.log('[foto] "' + subjectOf(q) + '" -> ' + images.length + ' immagini');
     d.slice(0, 5).forEach((r) => add(r.title, r.url, r.text));
