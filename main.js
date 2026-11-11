@@ -1192,11 +1192,10 @@ async function webContext(question, send) {
     const [w, d] = await Promise.all([wikiSearch(wantsPics ? subjectOf(q) || q : q).catch(() => []), wantsPics ? Promise.resolve([]) : ddgSearch(fresh ? q + ' ' + new Date().getFullYear() : q).catch(() => [])]);
     const qw = q.toLowerCase().split(/[^a-zàèéìòù]+/).filter((x) => x.length > 3 && !STOP.has(x)).map((x) => x.slice(0, 4));
     w.slice(0, 3).forEach((r, wi) => { if (wi < 2) add(r.title, r.url, r.text); if (r.img && images.length < 3 && ((wantsPics && wi === 0) || qw.some((x) => r.title.toLowerCase().includes(x)))) images.push({ src: r.img, title: r.title.replace(/^Wikipedia: /, ''), url: r.url }); });
-    if (wantsPics || !images.length) {
+    if (!wantsPics && !images.length) {
       try {
         let more = await wikiImages(q).catch(() => []);
-        if (wantsPics) more = more.filter((x) => qw.some((k) => x.title.toLowerCase().includes(k)));
-        else more = more.filter((x) => qw.some((k) => x.title.toLowerCase().includes(k))).slice(0, 2);
+        more = more.filter((x) => qw.some((k) => x.title.toLowerCase().includes(k))).slice(0, 2);
         more.forEach((x) => { if (images.length < 4 && !images.some((y) => y.src === x.src)) images.push(x); });
       } catch (e) { console.error('foto wiki:', e && e.message); }
     }
