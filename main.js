@@ -1117,7 +1117,7 @@ async function wikiSearch(q) {
     return out;
   } catch (e) { return []; }
 }
-const STOP = new Set('quale quali quanto quanti quando dove come perché perche cosa cose chi che sono sei siamo della delle degli dello nella nelle negli nello sulla sulle questo questa questi queste quello quella fammi fammela fatto fatta fare puoi puoi vedere vedi mostra mostrami foto fotografia fotografie immagine immagini picture dammi dimmi parlami spiegami spiega prossima prossimo oggi adesso ancora molto anche tutto tutti tutte ogni sopra sotto dentro fuori verso senza dopo prima'.split(' '));
+const STOP = new Set('quale quali quanto quanti quando dove come perché perche cosa cose chi che sono sei siamo della delle degli dello nella nelle negli nello sulla sulle questo questa questi queste quello quella fammi fammela fatto fatta fare puoi puoi vedere vedi mostra mostrami foto fotografia fotografie immagine immagini picture dammi dimmi parlami spiegami spiega prossima prossimo oggi adesso ancora molto anche tutto tutti tutte ogni sopra sotto dentro fuori verso senza dopo prima ciao salve buongiorno buonasera buonasera grazie prego scusa scusami favore gentilmente potresti potrebbe vorrei voglio vuoi sapere dimmi dire dirmi trovare trovami cercare cerca cercami mostrare mostrarmi farmi fammi fai fare faresti hai hanno pero però quindi allora invece insieme solo anche sempre mai ecco proprio magari un po circa'.split(' '));
 const subjectOf = (q) => String(q).toLowerCase().split(/[^a-zàèéìòù0-9]+/).filter((x) => x.length > 3 && !STOP.has(x)).slice(0, 5).join(' ');
 async function commonsImages(q) {
   const s = subjectOf(q); if (!s) return [];
@@ -1174,9 +1174,10 @@ async function webContext(question, send) {
     res.forEach((items) => items.slice(0, 4).forEach((it) => add(it.src + ': ' + it.title, it.url, it.desc || it.title)));
   }
   const q = question.replace(/https?:\/\/\S+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+  let wantsPics = false;
   if (q.length > 3 && !urls.length) {
     send('Cerco sul web…');
-    const wantsPics = /\b(foto|fotografi[ae]|immagin[ei]|fammi vedere|mostrami|mostra|com['’]è fatt|che aspetto|aspetto)\b/i.test(q);
+    wantsPics = /\b(foto|fotografi[ae]|immagin[ei]|fammi vedere|mostrami|mostra|com['’]è fatt|che aspetto|aspetto)\b/i.test(q);
     const fresh = /\b(prossim[aeoi]|quando|ultim[aeoi]|attual[ei]|adesso|ora|oggi|domani|quest[oa]|nuov[aeoi]|prezzo|costo|orari[o]?|risultat[io]|classifica)\b/i.test(q) && !/\b(19|20)\d\d\b/.test(q);
     const [w, d] = await Promise.all([wikiSearch(wantsPics ? subjectOf(q) || q : q).catch(() => []), wantsPics ? Promise.resolve([]) : ddgSearch(fresh ? q + ' ' + new Date().getFullYear() : q).catch(() => [])]);
     const qw = q.toLowerCase().split(/[^a-zàèéìòù]+/).filter((x) => x.length > 3 && !STOP.has(x)).map((x) => x.slice(0, 4));
@@ -1186,6 +1187,7 @@ async function webContext(question, send) {
         let more = await wikiImages(q).catch(() => []);
         if (wantsPics) { const ci = await commonsImages(q).catch(() => []); more = more.concat(ci); }
         else more = more.filter((x) => qw.some((k) => x.title.toLowerCase().includes(k))).slice(0, 2);
+        if (wantsPics) more = more.filter((x) => qw.some((k) => x.title.toLowerCase().includes(k)));
         more.forEach((x) => { if (images.length < 4 && !images.some((y) => y.src === x.src)) images.push(x); });
       } catch (e) { /* nessuna foto */ }
     }
@@ -1193,7 +1195,7 @@ async function webContext(question, send) {
   }
   let ctx = parts.join('\n\n');
   if (ctx.length > 6500) ctx = ctx.slice(0, 6500);
-  return { ctx, sources: sources.slice(0, 20), images: images.slice(0, 4) };
+  return { ctx, sources: sources.slice(0, 20), images: images.slice(0, 4), pics: wantsPics };
 }
 
 async function askChat(wcs, req) {
@@ -1209,15 +1211,16 @@ async function askChat(wcs, req) {
       if (Array.isArray(m.images) && m.images.length) o.images = m.images.slice(0, 4).map((x) => String(x).slice(0, 4000000));
       return o;
     });
-    let sources = [], images = [];
+    let sources = [], images = [], picsAsked = false;
     const last = msgs[msgs.length - 1];
     if (req.web && last && last.role === 'user' && !req.sensitive) {
       send('state', { id, text: 'Cerco informazioni aggiornate…' });
       const w = await webContext(String(req.question || ''), (t) => send('state', { id, text: t }));
-      sources = w.sources; images = w.images || [];
+      sources = w.sources; images = w.images || []; picsAsked = !!w.pics;
       if (w.ctx) last.content = 'INFORMAZIONI DAL WEB (cercate adesso, oggi è ' + new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' }) + '):\n' + w.ctx + '\n\nREGOLE: per date, eventi, prezzi e fatti recenti usa SOLO queste informazioni, non la tua memoria, che è vecchia. Se parlano di date già passate rispetto a oggi, ignorale e prendi la prima data FUTURA indicata. Se qui non c’è la risposta, dì chiaramente che non l’hai trovata invece di inventare.\n\nDOMANDA:\n' + last.content;
     }
-    if (last && last.role === 'user') last.content += '\n\n[Come rispondere: in italiano, in modo completo e ben spiegato, di solito 200-350 parole, con contesto e dettagli concreti (' + ((last.images && last.images.length) ? 'se c’è una foto, descrivi con precisione cosa si vede, di che cosa o chi si tratta, dove e quando è, e cosa c’è di notevole; ' : '') + 'date, luoghi, motivi, consigli pratici). Non fermarti a poche righe, tranne per saluti o domande banali.]';
+    if (last && last.role === 'user' && picsAsked) last.content += '\n\n[Come rispondere: l’utente vuole vedere foto, che Nexus mostra sotto la tua risposta. Rispondi in 2-4 frasi: di cosa si tratta e una curiosità. Non dare orari, prezzi o consigli di visita e non elencare siti.]';
+    else if (last && last.role === 'user') last.content += '\n\n[Come rispondere: in italiano, in modo completo e ben spiegato, di solito 200-350 parole, con contesto e dettagli concreti (' + ((last.images && last.images.length) ? 'se c’è una foto, descrivi con precisione cosa si vede, di che cosa o chi si tratta, dove e quando è, e cosa c’è di notevole; ' : '') + 'date, luoghi, motivi, consigli pratici). Non fermarti a poche righe, tranne per saluti o domande banali.]';
     send('state', { id, text: 'Sto pensando…' });
     const r = await fetch(OLLAMA + '/api/chat', { method: 'POST', signal: ac.signal, headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, stream: true, messages: [{ role: 'system', content: ASK_SYSTEM + '\n' + (data.place && data.place.name ? 'L’utente si trova a ' + data.place.name + (wxCache && wxCache.v ? ' (adesso ' + Math.round(wxCache.v.t) + ' °C)' : '') + ': dai le informazioni locali per quel luogo. ' : '') + 'Oggi è ' + new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) + '. L’utente si trova probabilmente in Italia (lingua: ' + app.getLocale() + ').' }].concat(msgs), keep_alive: '30m', options: { num_ctx: 8192, temperature: 0.5, num_predict: 1500 } }) });
