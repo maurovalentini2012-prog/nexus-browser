@@ -1140,25 +1140,30 @@ async function wikiSummaryImg(title) {
   if (typeof t === 'string' && /^https:\/\/upload\.wikimedia\.org\//.test(t)) return { src: t, title: String(j.title || title).slice(0, 60), url: 'https://it.wikipedia.org/wiki/' + encodeURIComponent(String(j.title || title).replace(/ /g, '_')) };
   return null;
 }
+let LEADDBG = '';
 async function wikiLead(title) { // immagine principale di una voce (segue i reindirizzamenti)
   const j = await getJson('https://it.wikipedia.org/w/api.php?action=query&redirects=1&prop=pageimages&piprop=thumbnail&pithumbsize=500&format=json&titles=' + encodeURIComponent(title));
   const pg = j && j.query && j.query.pages ? Object.values(j.query.pages)[0] : null;
   const t = pg && pg.thumbnail && pg.thumbnail.source;
+  LEADDBG = j ? (pg ? Object.keys(pg).join('+') + (t ? ' ' + String(t).slice(0, 40) : '') : 'nopage') : 'nojson';
   if (typeof t === 'string' && /^https:\/\/upload\.wikimedia\.org\//.test(t)) return { src: t, title: String(pg.title || title).slice(0, 60), url: 'https://it.wikipedia.org/wiki/' + encodeURIComponent(String(pg.title || title).replace(/ /g, '_')) };
   return null;
 }
-async function wikiImages(q) {
+async function wikiImages(q, rank) {
   const s = subjectOf(q) || q; if (!s) return [];
-  const j = await getJson('https://it.wikipedia.org/w/api.php?action=query&generator=search&gsrlimit=8&format=json&prop=pageimages|info&piprop=thumbnail&pithumbsize=500&inprop=url&gsrsearch=' + encodeURIComponent(s));
+  const j = await getJson('https://it.wikipedia.org/w/api.php?action=query&generator=search&gsrlimit=10&format=json&prop=pageimages|info&piprop=thumbnail&pithumbsize=500&inprop=url&gsrsearch=' + encodeURIComponent(s));
   const pages = (j && j.query && j.query.pages) ? Object.values(j.query.pages).sort((a, b) => (a.index || 0) - (b.index || 0)) : [];
   const out = [];
   for (const p of pages) {
     const t = p.thumbnail && p.thumbnail.source;
     if (typeof t !== 'string' || !/^https:\/\/upload\.wikimedia\.org\//.test(t)) continue;
-    out.push({ src: t, title: String(p.title || '').slice(0, 60), url: 'https://it.wikipedia.org/wiki/' + encodeURIComponent(String(p.title || '').replace(/ /g, '_')) });
-    if (out.length >= 4) break;
+    const title = String(p.title || '');
+    const lo = title.toLowerCase(), ss = s.toLowerCase();
+    const score = lo === ss ? 0 : (lo.startsWith(ss + ' ') || lo.endsWith(' ' + ss) ? 2 : (lo.includes(ss) ? 3 : 4));
+    out.push({ src: t, title: title.slice(0, 60), url: 'https://it.wikipedia.org/wiki/' + encodeURIComponent(title.replace(/ /g, '_')), score, n: pages.length });
   }
-  return out;
+  if (rank) out.sort((a, b) => a.score - b.score);
+  return out.slice(0, 4);
 }
 async function ddgSearch(q) {
   const h = await getText('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q) + '&kl=it-it', 8000);
@@ -1214,7 +1219,8 @@ async function webContext(question, send) {
         const titles = [...new Set([cap, ...w.slice(0, 2).map((r) => r.title.replace(/^Wikipedia: /, ''))].filter(Boolean))];
         let n = 0;
         for (const t of titles) { const x = await wikiLead(t).catch(() => null); if (x) { n++; push(x); } }
-        dg.push('voci ' + n + '/' + titles.length);
+        dg.push('voci ' + n + '/' + titles.length + (n ? '' : ' [' + LEADDBG + ']'));
+        if (images.length < 2) { const wi2 = await wikiImages(q, true).catch(() => []); dg.push('ricerca ' + wi2.length + (wi2[0] ? ' ' + wi2[0].title : '')); wi2.filter((x) => x.score <= 2).forEach(push); }
       } catch (e) { dg.push('voci errore'); }
       try { const ci = await commonsImages(q).catch(() => []); dg.push('commons ' + ci.length); ci.forEach(push); } catch (e) { dg.push('commons errore'); }
       if (!images.length) NETFAIL.push(dg.join(' '));
