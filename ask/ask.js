@@ -263,7 +263,7 @@
     if (!list || !list.length) return;
     var g = el('div', 'gallery');
     list.slice(0, 4).forEach(function (im) {
-      if (!im || typeof im.src !== 'string' || im.src.indexOf('https://upload.wikimedia.org/') !== 0 || typeof im.url !== 'string' || im.url.indexOf('https://') !== 0) return;
+      if (!im || typeof im.src !== 'string' || !/^https:\/\/(upload|thumb)\.wikimedia\.org\//.test(im.src) || typeof im.url !== 'string' || im.url.indexOf('https://') !== 0) return;
       var a = el('a', 'ph'); a.href = im.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.title = 'Apri la fonte: ' + im.title;
       var i = el('img'); i.alt = im.title; i.addEventListener('error', function () { a.remove(); if (!g.childNodes.length) g.remove(); }); i.src = im.src; a.appendChild(i);
       a.appendChild(el('span', null, im.title)); g.appendChild(a);

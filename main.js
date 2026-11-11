@@ -1113,7 +1113,7 @@ async function wikiSearch(q) {
     for (const h of hits) {
       const e = await getText('https://it.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=1&explaintext=1&piprop=thumbnail&pithumbsize=500&format=json&titles=' + encodeURIComponent(h.title));
       let text = '', img = '';
-      try { const pg = Object.values(JSON.parse(e).query.pages)[0]; text = String(pg.extract || '').slice(0, 1500); const s = pg.thumbnail && pg.thumbnail.source; if (typeof s === 'string' && /^https:\/\/upload\.wikimedia\.org\//.test(s)) img = s; } catch (err) { /* nessun testo */ }
+      try { const pg = Object.values(JSON.parse(e).query.pages)[0]; text = String(pg.extract || '').slice(0, 1500); const s = pg.thumbnail && pg.thumbnail.source; if (typeof s === 'string' && /^https:\/\/(?:upload|thumb)\.wikimedia\.org\//.test(s)) img = s; } catch (err) { /* nessun testo */ }
       if (text) out.push({ title: 'Wikipedia: ' + h.title, url: 'https://it.wikipedia.org/wiki/' + encodeURIComponent(h.title.replace(/ /g, '_')), text, img });
     }
     return out;
@@ -1128,7 +1128,7 @@ async function commonsImages(q) {
   const out = [];
   for (const p of pages) {
     const ii = p.imageinfo && p.imageinfo[0];
-    if (!ii || typeof ii.thumburl !== 'string' || !/^https:\/\/upload\.wikimedia\.org\//.test(ii.thumburl) || !/\.(jpe?g|png|webp)$/i.test(String(p.title))) continue;
+    if (!ii || typeof ii.thumburl !== 'string' || !/^https:\/\/(?:upload|thumb)\.wikimedia\.org\//.test(ii.thumburl) || !/\.(jpe?g|png|webp)$/i.test(String(p.title))) continue;
     out.push({ src: ii.thumburl, title: String(p.title).replace(/^File:/i, '').replace(/\.[a-z]+$/i, '').replace(/_/g, ' ').slice(0, 60), url: String(ii.descriptionurl || '').startsWith('https://commons.wikimedia.org/') ? ii.descriptionurl : 'https://commons.wikimedia.org/wiki/' + encodeURIComponent(String(p.title).replace(/ /g, '_')) });
     if (out.length >= 4) break;
   }
@@ -1137,7 +1137,7 @@ async function commonsImages(q) {
 async function wikiSummaryImg(title) {
   const j = await getJson('https://it.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(String(title).replace(/ /g, '_')));
   const t = j && j.thumbnail && j.thumbnail.source;
-  if (typeof t === 'string' && /^https:\/\/upload\.wikimedia\.org\//.test(t)) return { src: t, title: String(j.title || title).slice(0, 60), url: 'https://it.wikipedia.org/wiki/' + encodeURIComponent(String(j.title || title).replace(/ /g, '_')) };
+  if (typeof t === 'string' && /^https:\/\/(?:upload|thumb)\.wikimedia\.org\//.test(t)) return { src: t, title: String(j.title || title).slice(0, 60), url: 'https://it.wikipedia.org/wiki/' + encodeURIComponent(String(j.title || title).replace(/ /g, '_')) };
   return null;
 }
 let LEADDBG = '';
@@ -1146,7 +1146,7 @@ async function wikiLead(title) { // immagine principale di una voce (segue i rei
   const pg = j && j.query && j.query.pages ? Object.values(j.query.pages)[0] : null;
   const t = pg && pg.thumbnail && pg.thumbnail.source;
   LEADDBG = j ? (pg ? Object.keys(pg).join('+') + (t ? ' ' + String(t).slice(0, 40) : '') : 'nopage') : 'nojson';
-  if (typeof t === 'string' && /^https:\/\/upload\.wikimedia\.org\//.test(t)) return { src: t, title: String(pg.title || title).slice(0, 60), url: 'https://it.wikipedia.org/wiki/' + encodeURIComponent(String(pg.title || title).replace(/ /g, '_')) };
+  if (typeof t === 'string' && /^https:\/\/(?:upload|thumb)\.wikimedia\.org\//.test(t)) return { src: t, title: String(pg.title || title).slice(0, 60), url: 'https://it.wikipedia.org/wiki/' + encodeURIComponent(String(pg.title || title).replace(/ /g, '_')) };
   return null;
 }
 async function wikiImages(q, rank) {
@@ -1156,7 +1156,7 @@ async function wikiImages(q, rank) {
   const out = [];
   for (const p of pages) {
     const t = p.thumbnail && p.thumbnail.source;
-    if (typeof t !== 'string' || !/^https:\/\/upload\.wikimedia\.org\//.test(t)) continue;
+    if (typeof t !== 'string' || !/^https:\/\/(?:upload|thumb)\.wikimedia\.org\//.test(t)) continue;
     const title = String(p.title || '');
     const lo = title.toLowerCase(), ss = s.toLowerCase();
     const score = lo === ss ? 0 : (lo.startsWith(ss + ' ') || lo.endsWith(' ' + ss) ? 2 : (lo.includes(ss) ? 3 : 4));
