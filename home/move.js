@@ -1,9 +1,9 @@
-/* Sposta il blocco centrale (logo, NEXUS e ricerca): tasto destro → "Sblocca e sposta", trascina, poi "Blocca qui".
+/* Sposta la scritta NEXUS con la barra di ricerca (la N rotante resta al centro): tasto destro → "Sblocca e sposta", trascina, poi "Blocca qui".
    La posizione si salva come frazione dello schermo, separata per ogni risoluzione, così si adatta ai monitor diversi. */
 (function () {
-  var col = document.getElementById('col');
+  var col = document.getElementById('col-mv');
   if (!col) return;
-  var KEY = 'nexus-colpos:' + screen.width + 'x' + screen.height;
+  var KEY = 'nexus-mvpos:' + screen.width + 'x' + screen.height;
   var pos = { x: 0, y: 0 }, free = false, menu = null;
   function lsGet(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* senza memoria locale la posizione resta solo finché la pagina è aperta */ } }
@@ -21,7 +21,7 @@
     if (r.bottom < 120) dy = 120 - r.bottom; if (r.top > H - 80) dy = H - 80 - r.top;
     if (dx || dy) { pos.x += dx / W; pos.y += dy / H; apply(false); }
   }
-  function shift() { window.__nexusShift = { x: pos.x * window.innerWidth, y: pos.y * window.innerHeight }; }
+  function shift() { /* la N 3D e l'anello dei link restano al centro: si sposta solo la scritta con la ricerca */ }
   function apply(fix) {
     shift();
     col.style.transform = (pos.x || pos.y) ? 'translate(' + Math.round(pos.x * window.innerWidth) + 'px,' + Math.round(pos.y * window.innerHeight) + 'px)' : '';
