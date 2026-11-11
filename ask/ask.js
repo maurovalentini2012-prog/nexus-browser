@@ -270,10 +270,11 @@
     });
     if (g.childNodes.length) m.appendChild(g);
   }
-  function addNoPics(m, subject) {
+  function addNoPics(m, subject, diag) {
     if (!subject) return;
     var d = el('div', 'sources'); d.appendChild(el('span', null, 'Non sono riuscito a recuperare foto qui.'));
     var a = el('a', null, 'Cerca foto su Wikimedia Commons'); a.href = 'https://commons.wikimedia.org/w/index.php?search=' + encodeURIComponent(subject) + '&ns6=1'; a.target = '_blank'; a.rel = 'noopener noreferrer'; d.appendChild(a);
+    if (diag) d.appendChild(el('span', null, '(dettaglio: ' + diag + ')'));
     m.appendChild(d);
   }
   function addSources(m, list) {
@@ -349,7 +350,7 @@
     else {
       if (p.stopped && S.aiText) S.aiText += '\n\n(risposta interrotta)';
       if (!S.aiText) { ai.bubble.textContent = 'Nessuna risposta. Riprova.'; }
-      else { renderMd(ai.bubble, S.aiText); addImages(ai.box, p.images); addNoPics(ai.box, p.picsMiss); addSources(ai.box, p.sources); addTools(ai.box, S.aiText); S.chat.messages.push({ role: 'assistant', text: S.aiText, att: [], sources: p.sources || [] }); persist(); }
+      else { renderMd(ai.bubble, S.aiText); addImages(ai.box, p.images); addNoPics(ai.box, p.picsMiss, p.picsDiag); addSources(ai.box, p.sources); addTools(ai.box, S.aiText); S.chat.messages.push({ role: 'assistant', text: S.aiText, att: [], sources: p.sources || [] }); persist(); }
     }
     S.aiEl = null; scrollDown(); $('input').focus();
   });

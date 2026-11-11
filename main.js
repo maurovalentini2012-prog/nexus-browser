@@ -1087,9 +1087,11 @@ function pageText(url, max) {
     w.loadURL(url).catch(() => end(null));
   });
 }
+const NETFAIL = [];
 async function getText(url, ms) {
   const ac = new AbortController(); const to = setTimeout(() => ac.abort(), ms || 8000);
-  try { const r = await fetch(url, { signal: ac.signal, headers: { 'User-Agent': 'Mozilla/5.0 NexusBrowser', 'Accept-Language': 'it-IT,it;q=0.9' } }); if (!r.ok) return null; return (await r.text()).slice(0, 1500000); } catch (e) { return null; } finally { clearTimeout(to); }
+  const wm = /wikimedia\.org|wikipedia\.org/.test(url);
+  try { const r = await fetch(url, { signal: ac.signal, headers: { 'User-Agent': wm ? 'NexusBrowser/0.7 (https://github.com/maurovalentini2012-prog/nexus-browser; browser desktop gratuito) Node-fetch' : 'Mozilla/5.0 NexusBrowser', 'Accept-Language': 'it-IT,it;q=0.9', 'Accept': 'application/json,text/html,*/*' } }); if (!r.ok) { NETFAIL.push(new URL(url).hostname.split('.')[0] + ' ' + r.status); return null; } return (await r.text()).slice(0, 1500000); } catch (e) { NETFAIL.push(new URL(url).hostname.split('.')[0] + ' ' + String(e && (e.cause && e.cause.code || e.name) || 'errore')); return null; } finally { clearTimeout(to); }
 }
 const unent = (s) => String(s || '').replace(/&#x([0-9a-f]+);/gi, (a, h) => { const n = parseInt(h, 16); return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : a; }).replace(/&#(\d+);/g, (a, d) => { const n = +d; return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : a; }).replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
 async function feedItems(f) {
@@ -1168,6 +1170,7 @@ async function ddgSearch(q) {
 const NEWS_RE = /\b(notizie|notizia|news|ultime|ultim[ao] ora|attualit[aà]|cosa [eè] successo|che succede|cosa succede|oggi)\b/i;
 async function webContext(question, send) {
   const sources = [], parts = [], images = [];
+  NETFAIL.length = 0;
   if (FAKE_NET && /colosseo/i.test(question)) return { ctx: '[1] Colosseo\nAnfiteatro di Roma.', sources: [{ title: 'Wikipedia: Colosseo', url: 'https://it.wikipedia.org/wiki/Colosseo' }], images: [{ src: 'https://upload.wikimedia.org/wikipedia/commons/x/x.jpg', title: 'Colosseo', url: 'https://it.wikipedia.org/wiki/Colosseo' }], pics: true };
   const add = (title, url, text) => { sources.push({ title, url }); parts.push('[' + sources.length + '] ' + title + ' (' + url + ')\n' + text); };
   const urls = [...new Set((question.match(/https?:\/\/[^\s<>"')]+/gi) || []))].slice(0, 2);
@@ -1188,7 +1191,7 @@ async function webContext(question, send) {
     const fresh = /\b(prossim[aeoi]|quando|ultim[aeoi]|attual[ei]|adesso|ora|oggi|domani|quest[oa]|nuov[aeoi]|prezzo|costo|orari[o]?|risultat[io]|classifica)\b/i.test(q) && !/\b(19|20)\d\d\b/.test(q);
     const [w, d] = await Promise.all([wikiSearch(wantsPics ? subjectOf(q) || q : q).catch(() => []), wantsPics ? Promise.resolve([]) : ddgSearch(fresh ? q + ' ' + new Date().getFullYear() : q).catch(() => [])]);
     const qw = q.toLowerCase().split(/[^a-zàèéìòù]+/).filter((x) => x.length > 3 && !STOP.has(x)).map((x) => x.slice(0, 4));
-    w.slice(0, 3).forEach((r, wi) => { if (wi < 2) add(r.title, r.url, r.text); if (r.img && images.length < 3 && qw.some((x) => r.title.toLowerCase().includes(x))) images.push({ src: r.img, title: r.title.replace(/^Wikipedia: /, ''), url: r.url }); });
+    w.slice(0, 3).forEach((r, wi) => { if (wi < 2) add(r.title, r.url, r.text); if (r.img && images.length < 3 && ((wantsPics && wi === 0) || qw.some((x) => r.title.toLowerCase().includes(x)))) images.push({ src: r.img, title: r.title.replace(/^Wikipedia: /, ''), url: r.url }); });
     if (wantsPics || !images.length) {
       try {
         let more = await wikiImages(q).catch(() => []);
@@ -1208,7 +1211,7 @@ async function webContext(question, send) {
   }
   let ctx = parts.join('\n\n');
   if (ctx.length > 6500) ctx = ctx.slice(0, 6500);
-  return { ctx, sources: sources.slice(0, 20), images: images.slice(0, 4), pics: wantsPics && images.length > 0, picsMiss: wantsPics && !images.length ? (subjectOf(q) || q) : '' };
+  return { ctx, sources: sources.slice(0, 20), images: images.slice(0, 4), pics: wantsPics && images.length > 0, picsMiss: wantsPics && !images.length ? (subjectOf(q) || q) : '', diag: wantsPics && !images.length ? [...new Set(NETFAIL)].slice(0, 4).join(', ') : '' };
 }
 
 async function askChat(wcs, req) {
@@ -1224,12 +1227,12 @@ async function askChat(wcs, req) {
       if (Array.isArray(m.images) && m.images.length) o.images = m.images.slice(0, 4).map((x) => String(x).slice(0, 4000000));
       return o;
     });
-    let sources = [], images = [], picsAsked = false, picsMiss = '';
+    let sources = [], images = [], picsAsked = false, picsMiss = '', picsDiag = '';
     const last = msgs[msgs.length - 1];
     if (req.web && last && last.role === 'user' && !req.sensitive) {
       send('state', { id, text: 'Cerco informazioni aggiornate…' });
       const w = await webContext(String(req.question || ''), (t) => send('state', { id, text: t }));
-      sources = w.sources; images = w.images || []; picsAsked = !!w.pics; picsMiss = w.picsMiss || '';
+      sources = w.sources; images = w.images || []; picsAsked = !!w.pics; picsMiss = w.picsMiss || ''; picsDiag = w.diag || '';
       if (w.ctx) last.content = 'INFORMAZIONI DAL WEB (cercate adesso, oggi è ' + new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' }) + '):\n' + w.ctx + '\n\nREGOLE: per date, eventi, prezzi e fatti recenti usa SOLO queste informazioni, non la tua memoria, che è vecchia. Se parlano di date già passate rispetto a oggi, ignorale e prendi la prima data FUTURA indicata. Se qui non c’è la risposta, dì chiaramente che non l’hai trovata invece di inventare.\n\nDOMANDA:\n' + last.content;
     }
     if (last && last.role === 'user' && picsAsked) last.content += '\n\n[Come rispondere: l’utente vuole vedere foto, che Nexus mostra sotto la tua risposta. Rispondi in 2-4 frasi: di cosa si tratta e una curiosità. Non dare orari, prezzi o consigli di visita e non elencare siti.]';
@@ -1248,7 +1251,7 @@ async function askChat(wcs, req) {
         try { const j = JSON.parse(line); if (j.error) throw new Error(j.error); if (j.message && j.message.content) send('chunk', { id, text: j.message.content }); } catch (e) { if (e && e.message && !/JSON/.test(e.message)) throw e; }
       }
     }
-    send('done', { id, sources, images, picsMiss });
+    send('done', { id, sources, images, picsMiss, picsDiag });
   } catch (e) {
     const stopped = e && e.name === 'AbortError';
     send('done', { id, stopped, error: stopped ? null : (/fetch failed|ECONNREFUSED/i.test(String(e.message)) ? 'Non riesco a parlare con il motore. Apri Ollama e riprova.' : String(e.message || e)) });
