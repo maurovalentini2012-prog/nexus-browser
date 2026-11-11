@@ -141,11 +141,6 @@
   function openPop(on) { pop.hidden = on === undefined ? !pop.hidden : !on; if (!pop.hidden) { $('wxQ').focus(); } }
   function choose(p) { api.placeSet({ name: p.name, lat: p.lat, lon: p.lon, hidden: false }).then(function (v) { apply(v); res.textContent = ''; pop.hidden = true; }); }
   $('wxOpen').addEventListener('click', function () { openPop(); });
-  $('wxBtn').addEventListener('click', function () {
-    if (place && place.hidden) api.placeSet({ name: place.name, lat: place.lat, lon: place.lon, hidden: false }).then(apply);
-    openPop(true);
-  });
-  $('wxHide').addEventListener('click', function () { pop.hidden = true; api.placeSet({ name: place ? place.name : '', lat: place ? place.lat : null, lon: place ? place.lon : null, hidden: true }).then(apply); });
   $('wxForm').addEventListener('submit', function (e) {
     e.preventDefault(); var q = $('wxQ').value.trim(); if (q.length < 2) return;
     res.textContent = ''; note.textContent = 'Cerco…';
@@ -158,8 +153,25 @@
     res.textContent = ''; note.textContent = 'Cerco la posizione…';
     api.placeLocate().then(function (r) { if (r && r.ok) choose(r); else note.textContent = (r && r.error) || 'Non riesco a trovare la posizione.'; });
   });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !pop.hidden) pop.hidden = true; });
-  document.addEventListener('mousedown', function (e) { if (!pop.hidden && !pop.contains(e.target) && !box.contains(e.target) && e.target.id !== 'wxBtn') pop.hidden = true; });
+  /* tasto destro: nascondi o rimostra il meteo */
+  var wmenu = null;
+  function closeWm() { if (wmenu) { wmenu.remove(); wmenu = null; } }
+  function setHidden(v) { api.placeSet({ name: place ? place.name : '', lat: place ? place.lat : null, lon: place ? place.lon : null, hidden: v }).then(apply); }
+  function wItem(label, fn) { var b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.addEventListener('click', function () { closeWm(); fn(); }); return b; }
+  document.addEventListener('contextmenu', function (e) {
+    var onWx = box.contains(e.target), hidden = !!(place && place.hidden);
+    if (!onWx && !(hidden && e.target.closest && e.target.closest('.stage, body') && !e.defaultPrevented)) return;
+    if (!onWx && e.target.closest && e.target.closest('.col-menu, .panel, .controls, .chip, .wx-pop')) return;
+    e.preventDefault(); closeWm();
+    wmenu = document.createElement('div'); wmenu.className = 'col-menu'; wmenu.setAttribute('role', 'menu');
+    if (onWx) { wmenu.appendChild(wItem('Cambia città', function () { openPop(true); })); wmenu.appendChild(wItem('Nascondi il meteo', function () { pop.hidden = true; setHidden(true); })); }
+    else wmenu.appendChild(wItem('Mostra il meteo', function () { setHidden(false); if (!place || place.lat == null) openPop(true); }));
+    document.body.appendChild(wmenu);
+    wmenu.style.left = Math.min(e.clientX, window.innerWidth - wmenu.offsetWidth - 8) + 'px'; wmenu.style.top = Math.min(e.clientY, window.innerHeight - wmenu.offsetHeight - 8) + 'px';
+  });
+  document.addEventListener('mousedown', function (e) { if (wmenu && !wmenu.contains(e.target)) closeWm(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeWm(); if (!pop.hidden) pop.hidden = true; } });
+  document.addEventListener('mousedown', function (e) { if (!pop.hidden && !pop.contains(e.target) && !box.contains(e.target) && true) pop.hidden = true; });
   if (api.onPlace) api.onPlace(apply);
 
   load(false); render(); frame();

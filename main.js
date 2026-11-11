@@ -360,7 +360,14 @@ function createTab(url, makeActive = true, spaceId, opts = {}) {
   const wc = view.webContents;
   wc.on('destroyed', () => { if (tabs.has(id)) closeTab(id); }); // la pagina si è chiusa da sola (es. finestra di accesso Google)
 
-  wc.setWindowOpenHandler(({ url: u }) => { createTab(u, true, tab.space, { private: tab.private }); return { action: 'deny' }; });
+  wc.setWindowOpenHandler(({ url: u, disposition }) => {
+    // finestre di accesso (Google, ecc.): devono restare finestre vere, legate alla pagina che le ha aperte, altrimenti l'accesso non si completa
+    if (disposition === 'new-window' && /^https:/i.test(u)) {
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 520, height: 720, parent: win || undefined, autoHideMenuBar: true, backgroundColor: '#ffffff', webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } } };
+    }
+    createTab(u, true, tab.space, { private: tab.private });
+    return { action: 'deny' };
+  });
   wc.on('page-title-updated', (_e, title) => { tab.title = title; if (!tab.private) recordTitle(wc.getURL(), fileTitle(wc.getURL(), title)); push(); });
   wc.on('page-favicon-updated', (_e, icons) => { tab.favicon = icons && icons[0] || null; push(); });
   wc.on('did-navigate', (_e, u) => { tab.favicon = null; tab.blocked = 0; if (!tab.private) recordVisit(u); const h = hostKey(u); if (h && /^https?:/i.test(u)) wc.setZoomLevel(data.zoom[h] || 0); });
@@ -1095,7 +1102,7 @@ async function feedItems(f) {
   return out;
 }
 async function wikiSearch(q) {
-  const j = await getText('https://it.wikipedia.org/w/api.php?action=query&list=search&srlimit=2&format=json&srsearch=' + encodeURIComponent(q));
+  const j = await getText('https://it.wikipedia.org/w/api.php?action=query&list=search&srlimit=3&format=json&srsearch=' + encodeURIComponent(q));
   if (!j) return [];
   try {
     const hits = JSON.parse(j).query.search || [];
@@ -1108,6 +1115,21 @@ async function wikiSearch(q) {
     }
     return out;
   } catch (e) { return []; }
+}
+const STOP = new Set('quale quali quanto quanti quando dove come perché perche cosa cose chi che sono sei siamo della delle degli dello nella nelle negli nello sulla sulle questo questa questi queste quello quella fammi fammela fatto fatta fare puoi puoi vedere vedi mostra mostrami foto fotografia fotografie immagine immagini picture dammi dimmi parlami spiegami spiega prossima prossimo oggi adesso ancora molto anche tutto tutti tutte ogni sopra sotto dentro fuori verso senza dopo prima'.split(' '));
+const subjectOf = (q) => String(q).toLowerCase().split(/[^a-zàèéìòù0-9]+/).filter((x) => x.length > 3 && !STOP.has(x)).slice(0, 5).join(' ');
+async function commonsImages(q) {
+  const s = subjectOf(q); if (!s) return [];
+  const j = await getJson('https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrlimit=8&format=json&prop=imageinfo&iiprop=url&iiurlwidth=520&gsrsearch=' + encodeURIComponent(s + ' filetype:bitmap'));
+  const pages = (j && j.query && j.query.pages) ? Object.values(j.query.pages).sort((a, b) => (a.index || 0) - (b.index || 0)) : [];
+  const out = [];
+  for (const p of pages) {
+    const ii = p.imageinfo && p.imageinfo[0];
+    if (!ii || typeof ii.thumburl !== 'string' || !/^https:\/\/upload\.wikimedia\.org\//.test(ii.thumburl) || !/\.(jpe?g|png|webp)$/i.test(String(p.title))) continue;
+    out.push({ src: ii.thumburl, title: String(p.title).replace(/^File:/i, '').replace(/\.[a-z]+$/i, '').replace(/_/g, ' ').slice(0, 60), url: String(ii.descriptionurl || '').startsWith('https://commons.wikimedia.org/') ? ii.descriptionurl : 'https://commons.wikimedia.org/wiki/' + encodeURIComponent(String(p.title).replace(/ /g, '_')) });
+    if (out.length >= 4) break;
+  }
+  return out;
 }
 async function ddgSearch(q) {
   const h = await getText('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q) + '&kl=it-it', 8000);
@@ -1142,13 +1164,15 @@ async function webContext(question, send) {
     send('Cerco sul web…');
     const fresh = /\b(prossim[aeoi]|quando|ultim[aeoi]|attual[ei]|adesso|ora|oggi|domani|quest[oa]|nuov[aeoi]|prezzo|costo|orari[o]?|risultat[io]|classifica)\b/i.test(q) && !/\b(19|20)\d\d\b/.test(q);
     const [w, d] = await Promise.all([wikiSearch(q).catch(() => []), ddgSearch(fresh ? q + ' ' + new Date().getFullYear() : q).catch(() => [])]);
-    const qw = q.toLowerCase().split(/[^a-zàèéìòù]+/).filter((x) => x.length > 4).map((x) => x.slice(0, 5));
-    w.slice(0, 2).forEach((r, wi) => { add(r.title, r.url, r.text); if (r.img && wi === 0 && qw.some((x) => r.title.toLowerCase().includes(x))) images.push({ src: r.img, title: r.title.replace(/^Wikipedia: /, ''), url: r.url }); });
+    const qw = q.toLowerCase().split(/[^a-zàèéìòù]+/).filter((x) => x.length > 3 && !STOP.has(x)).map((x) => x.slice(0, 4));
+    w.slice(0, 3).forEach((r, wi) => { if (wi < 2) add(r.title, r.url, r.text); if (r.img && images.length < 3 && qw.some((x) => r.title.toLowerCase().includes(x))) images.push({ src: r.img, title: r.title.replace(/^Wikipedia: /, ''), url: r.url }); });
+    const wantsPics = /\b(foto|fotografi[ae]|immagin[ei]|fammi vedere|mostrami|mostra|com['’]è fatt|che aspetto|aspetto)\b/i.test(q);
+    if (wantsPics || !images.length) { try { const ci = await commonsImages(q); if (wantsPics) images.splice(0, images.length, ...ci.slice(0, 4)); else if (ci.length && /\b(chi è|chi era|cos['’]è|cosa è|dove si trova|dov['’]è|monument|quadro|opera|castello|città|animale|pianta|fiore)\b/i.test(q)) images.push(...ci.slice(0, 3)); } catch (e) { /* nessuna foto */ } }
     d.slice(0, 5).forEach((r) => add(r.title, r.url, r.text));
   }
   let ctx = parts.join('\n\n');
   if (ctx.length > 6500) ctx = ctx.slice(0, 6500);
-  return { ctx, sources: sources.slice(0, 20), images: images.slice(0, 3) };
+  return { ctx, sources: sources.slice(0, 20), images: images.slice(0, 4) };
 }
 
 async function askChat(wcs, req) {

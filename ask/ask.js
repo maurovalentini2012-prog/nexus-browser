@@ -262,9 +262,9 @@
   function addImages(m, list) {
     if (!list || !list.length) return;
     var g = el('div', 'gallery');
-    list.slice(0, 3).forEach(function (im) {
-      if (!im || typeof im.src !== 'string' || im.src.indexOf('https://upload.wikimedia.org/') !== 0) return;
-      var a = el('a', 'ph'); a.href = im.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.title = 'Apri ' + im.title + ' su Wikipedia';
+    list.slice(0, 4).forEach(function (im) {
+      if (!im || typeof im.src !== 'string' || im.src.indexOf('https://upload.wikimedia.org/') !== 0 || typeof im.url !== 'string' || im.url.indexOf('https://') !== 0) return;
+      var a = el('a', 'ph'); a.href = im.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.title = 'Apri la fonte: ' + im.title;
       var i = el('img'); i.src = im.src; i.alt = im.title; i.loading = 'lazy'; a.appendChild(i);
       a.appendChild(el('span', null, im.title)); g.appendChild(a);
     });

@@ -226,7 +226,7 @@
 
   var TAU = Math.PI * 2;
   var scene, camera, logo, FOV_T, THEMES, KEYS, cur = {}, tgt = {}, themeName = 'cyan';
-  var logoTargetY = 0, clean = false, spin = false, themeFromMain = null;
+  var logoTargetY = 0, logoTargetX = 0, ptsTX = 0, ptsTY = 0, ptsX = 0, ptsY = 0, clean = false, spin = false, themeFromMain = null;
   var custom = { accent: null, bg: null };   // colori scelti a mano (sopra il tema)
   var customFromMain = null;
 
@@ -260,6 +260,9 @@
     camera.position.set(0, 0, visH / (2 * FOV_T));
     camera.updateProjectionMatrix();
     logoTargetY = (lay.H / 2 - ayc) / pxu;
+    logoTargetX = ((ar.left - sr.left + ar.width / 2) - lay.W / 2) / pxu;
+    var sh = window.__nexusShift || { x: 0, y: 0 };
+    ptsTX = sh.x / pxu; ptsTY = -sh.y / pxu;
   }
   function resize() {
     var w = Math.max(stage.clientWidth, 1), h = Math.max(stage.clientHeight, 1);
@@ -543,6 +546,8 @@
       logo.rotation.set(rotX, rotY, 0);
       var yT = clean ? 0 : logoTargetY;
       logo.position.y += (yT - logo.position.y) * Math.min(1, dt * 3);
+      logo.position.x += ((clean ? 0 : logoTargetX) - logo.position.x) * Math.min(1, dt * 3);
+      ptsX += ((clean ? 0 : ptsTX) - ptsX) * Math.min(1, dt * 3); ptsY += ((clean ? 0 : ptsTY) - ptsY) * Math.min(1, dt * 3);
       pulse *= Math.pow(0.04, dt);
       logo.scale.setScalar(1 + pulse * 0.07);
 
@@ -557,7 +562,7 @@
 
       if (waveT < 1) {
         waveT = Math.min(1, waveT + dt / 1.3);
-        wave.position.set(0, logo.position.y, 0);
+        wave.position.set(logo.position.x, logo.position.y, 0);
         wave.scale.setScalar(1.2 + waveT * 7);
         mWave.opacity = (1 - waveT) * (1 - waveT) * 0.7;
       } else mWave.opacity = 0;
@@ -582,12 +587,12 @@
         pos[i3] = x + ox; pos[i3 + 1] = y + oy; pos[i3 + 2] = z + oz;
       }
       pGeo.attributes.position.needsUpdate = true;
-      points.position.set(ptr.sx * -0.35, ptr.sy * -0.2, 0);
+      points.position.set(ptr.sx * -0.35 + ptsX, ptr.sy * -0.2 + ptsY, 0);
 
       placeChips(dt); placePreview();
       renderer.render(scene, camera);
     };
-    window.__nexusStart = function () { logo.position.y = logoTargetY; requestAnimationFrame(frame); };
+    window.__nexusStart = function () { logo.position.y = logoTargetY; logo.position.x = logoTargetX; ptsX = ptsTX; ptsY = ptsTY; requestAnimationFrame(frame); };
   } else {
     // senza WebGL i link ruotano comunque
     var last2 = performance.now();
