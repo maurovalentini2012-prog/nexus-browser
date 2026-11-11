@@ -35,6 +35,7 @@
     if (last < text.length) parent.appendChild(document.createTextNode(text.slice(last)));
   }
   function renderMd(box, text) {
+    text = String(text || '').replace(/^[ \t]*\[(?:immagine|foto|fotografia|image)[^\]\n]{0,140}\][ \t]*$/gim, '').replace(/\n{3,}/g, '\n\n');
     box.textContent = '';
     var lines = String(text).replace(/\r/g, '').split('\n'), i = 0, para = [];
     function flush() { if (para.length) { var p = el('p'); inline(p, para.join(' ')); box.appendChild(p); para = []; } }

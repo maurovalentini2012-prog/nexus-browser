@@ -1225,6 +1225,13 @@ async function webContext(question, send) {
       try { const ci = await commonsImages(q).catch(() => []); dg.push('commons ' + ci.length); ci.forEach(push); } catch (e) { dg.push('commons errore'); }
       if (!images.length) NETFAIL.push(dg.join(' '));
     }
+    if (wantsPics && images.length > 1) { // prima le foto più pertinenti, via loghi e stemmi
+      const qk = subjectOf(q).split(' ').filter(Boolean).map((x) => x.slice(0, 4));
+      const sc = (x) => qk.filter((k) => x.title.toLowerCase().includes(k)).length - (/\b(logo|stemma|emblema|simbolo|bandiera|associazione|football club|a\.?c\.?\b)/i.test(x.title) ? 2 : 0);
+      const keep = images.map((x, i) => ({ x, i, s: sc(x) })).sort((a, b) => b.s - a.s || a.i - b.i).map((o) => o.x);
+      const good = keep.filter((x) => sc(x) > 0);
+      images.length = 0; (good.length ? good : keep).forEach((x) => images.push(x));
+    }
     if (wantsPics) console.log('[foto] "' + subjectOf(q) + '" -> ' + images.length + ' immagini');
     d.slice(0, 5).forEach((r) => add(r.title, r.url, r.text));
   }
@@ -1254,7 +1261,7 @@ async function askChat(wcs, req) {
       sources = w.sources; images = w.images || []; picsAsked = !!w.pics; picsMiss = w.picsMiss || ''; picsDiag = w.diag || '';
       if (w.ctx) last.content = 'INFORMAZIONI DAL WEB (cercate adesso, oggi è ' + new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' }) + '):\n' + w.ctx + '\n\nREGOLE: per date, eventi, prezzi e fatti recenti usa SOLO queste informazioni, non la tua memoria, che è vecchia. Se parlano di date già passate rispetto a oggi, ignorale e prendi la prima data FUTURA indicata. Se qui non c’è la risposta, dì chiaramente che non l’hai trovata invece di inventare.\n\nDOMANDA:\n' + last.content;
     }
-    if (last && last.role === 'user' && picsAsked) last.content += '\n\n[Come rispondere: l’utente vuole vedere foto, che Nexus mostra sotto la tua risposta. Rispondi in 2-4 frasi: di cosa si tratta e una curiosità. Non dare orari, prezzi o consigli di visita e non elencare siti.]';
+    if (last && last.role === 'user' && picsAsked) last.content += '\n\n[Come rispondere: l’utente vuole vedere foto, che Nexus mostra sotto la tua risposta. Non scrivere segnaposto tra parentesi quadre come [Immagine …]. Rispondi in 2-4 frasi: di cosa si tratta e una curiosità. Non dare orari, prezzi o consigli di visita e non elencare siti.]';
     else if (last && last.role === 'user') last.content += '\n\n[Come rispondere: in italiano, in modo completo e ben spiegato, di solito 200-350 parole, con contesto e dettagli concreti (' + ((last.images && last.images.length) ? 'se c’è una foto, descrivi con precisione cosa si vede, di che cosa o chi si tratta, dove e quando è, e cosa c’è di notevole; ' : '') + 'date, luoghi, motivi, consigli pratici). Non fermarti a poche righe, tranne per saluti o domande banali.]';
     send('state', { id, text: 'Sto pensando…' });
     const r = await fetch(OLLAMA + '/api/chat', { method: 'POST', signal: ac.signal, headers: { 'Content-Type': 'application/json' },
